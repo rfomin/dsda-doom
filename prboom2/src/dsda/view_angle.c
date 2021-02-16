@@ -32,11 +32,25 @@ extern int menuactive;
 
 static angle_t dsda_GetRawViewAngle(player_t* player) {
   angle_t angleturn;
+  static angle_t angle_history[3];
+  static int angle_index = 0;
+  static int lasttime;
 
   angleturn = mouse_carry - mousex;
 
   if (!dsda_raw_mouse_longtics)
     angleturn = (angleturn + 128) & 0xff00;
+
+  if (leveltime != lasttime)
+  {
+    lasttime = leveltime;
+    angle_history[angle_index] = player->mo->angle;
+    angle_index++;
+    if (angle_index == 3) angle_index = 0;
+  }
+
+  if (angle_history[0] == angle_history[1] && angle_history[1] == angle_history[2])
+    return player->mo->angle;
 
   return player->mo->angle + (angleturn << 16);
 }
