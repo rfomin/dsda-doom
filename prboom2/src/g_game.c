@@ -343,8 +343,9 @@ static int mousearray[MAX_MOUSE_BUTTONS + 1];
 static int *mousebuttons = &mousearray[1];    // allow [-1]
 
 // mouse values are used once
-static int   mousex;
-static int   mousey;
+signed short mouse_carry;
+int          mousex;
+int          mousey;
 static int   dclicktime;
 static int   dclickstate;
 static int   dclicks;
@@ -992,10 +993,9 @@ void G_BuildTiccmd(ticcmd_t* cmd)
 	// Don't discard mouse delta even if value is too small to
 	// turn the player this tic
 	if (mouse_carrytics) {
-	  static signed short carry = 0;
-	  signed short desired_angleturn = cmd->angleturn + carry;
+	  signed short desired_angleturn = cmd->angleturn + mouse_carry;
 	  cmd->angleturn = (desired_angleturn + 128) & 0xff00;
-	  carry = desired_angleturn - cmd->angleturn;
+	  mouse_carry = desired_angleturn - cmd->angleturn;
 	}
 
     cmd->angleturn = (((cmd->angleturn + 128) >> 8) << 8);

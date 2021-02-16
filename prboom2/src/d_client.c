@@ -335,9 +335,9 @@ void NetUpdate(void)
     int newtics = I_GetTime() - lastmadetic;
 //e6y    newtics = (newtics > 0 ? newtics : 0);
     lastmadetic += newtics;
+    I_StartTic();
     if (ffmap) newtics++;
     while (newtics--) {
-      I_StartTic();
       if (maketic - gametic > BACKUPTICS/2) break;
 
       // e6y

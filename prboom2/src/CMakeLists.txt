@@ -31,6 +31,8 @@ set(COMMON_SRC
     dsda/key_frame.h
     dsda/settings.c
     dsda/settings.h
+    dsda/view_angle.c
+    dsda/view_angle.h
     dstrings.c
     dstrings.h
     d_deh.c

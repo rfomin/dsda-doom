@@ -42,6 +42,7 @@
 #include "i_capture.h"
 #include "e6y.h"
 #include "dsda/settings.h"
+#include "dsda/view_angle.h"
 
 int movement_smooth_default;
 int movement_smooth;
@@ -174,6 +175,11 @@ void R_InterpolateView(player_t *player, fixed_t frac)
       viewangle = R_SmoothPlaying_Get(player) + viewangleoffset;
       viewpitch = P_PlayerPitch(player) + viewpitchoffset;
     }
+  }
+
+  if (!walkcamera.type)
+  {
+    viewangle = dsda_GetViewAngle(player, frac) + viewangleoffset;
   }
 
   if (!paused && movement_smooth)
