@@ -46,6 +46,10 @@
 #include "s_advsound.h"
 #include "e6y.h"//e6y
 
+#include "dsda/msecnode.h"
+
+#define MARKED_FOR_DELETION -2
+
 byte *save_p;
 
 // Pads save_p to a 4-byte boundary
@@ -275,7 +279,9 @@ static int number_of_thinkers;
 
 static dboolean P_IsMobjThinker(thinker_t* thinker)
 {
-  return thinker->function == P_MobjThinker || thinker->function == P_BlasterMobjThinker;
+  return thinker->function == P_MobjThinker ||
+         thinker->function == P_BlasterMobjThinker ||
+         (thinker->function == P_RemoveThinkerDelayed && thinker->references);
 }
 
 void P_ThinkerToIndex(void)
@@ -321,7 +327,7 @@ static void P_SetNewTarget(mobj_t **mop, mobj_t *targ)
 
 // savegame file stores ints in the corresponding * field; this function
 // safely casts them back to int.
-static int P_GetMobj(mobj_t* mi, size_t s)
+int P_GetMobj(mobj_t* mi, size_t s)
 {
   size_t i = (size_t)mi;
   if (i >= s)
@@ -440,6 +446,166 @@ void P_UnArchiveMap(void)
         AM_setMarkParams(i);
       }
     }
+}
+
+void P_ArchiveThinkerSubclass(th_class class)
+{
+  int count;
+  thinker_t *cap, *th;
+
+  count = 0;
+  cap = &thinkerclasscap[class];
+  for (th = cap->cnext; th != cap; th = th->cnext)
+    count++;
+
+  CheckSaveGame(count * sizeof(mobj_t*) + sizeof(count));
+
+  memcpy(save_p, &count, sizeof(count));
+  save_p += sizeof(count);
+
+  for (th = cap->cnext; th != cap; th = th->cnext)
+  {
+    memcpy(save_p, &th->prev, sizeof(th->prev));
+    save_p += sizeof(th->prev);
+  }
+}
+
+void P_ArchiveThinkerSubclasses(void)
+{
+  // Other subclass ordering is not relevant
+  P_ArchiveThinkerSubclass(th_friends);
+  P_ArchiveThinkerSubclass(th_enemies);
+}
+
+void P_UnArchiveThinkerSubclass(th_class class, mobj_t** mobj_p, int mobj_count)
+{
+  int i;
+  int count;
+
+  // Reset thinker subclass list
+  thinkerclasscap[class].cprev->cnext = thinkerclasscap[class].cnext;
+  thinkerclasscap[class].cnext->cprev = thinkerclasscap[class].cprev;
+  thinkerclasscap[class].cprev =
+    thinkerclasscap[class].cnext = &thinkerclasscap[class];
+
+  memcpy(&count, save_p, sizeof(count));
+  save_p += sizeof(count);
+
+  for (i = 0; i < count; ++i)
+  {
+    thinker_t* th;
+    mobj_t* mobj;
+
+    memcpy(&mobj, save_p, sizeof(mobj));
+    save_p += sizeof(mobj);
+
+    mobj = mobj_p[P_GetMobj(mobj, mobj_count + 1)];
+
+    if (mobj)
+    {
+      // remove mobj from current subclass list
+      th = mobj->thinker.cnext;
+      if (th != NULL)
+      {
+        th->cprev = mobj->thinker.cprev;
+        th->cprev->cnext = th;
+      }
+
+      th = &thinkerclasscap[class];
+      th->cprev->cnext = &mobj->thinker;
+      mobj->thinker.cnext = th;
+      mobj->thinker.cprev = th->cprev;
+      th->cprev = &mobj->thinker;
+    }
+    else
+    {
+      I_Error("P_UnArchiveThinkerSubclass: mobj does not exist!\n");
+    }
+  }
+}
+
+void P_UnArchiveThinkerSubclasses(mobj_t** mobj_p, int mobj_count)
+{
+  P_UnArchiveThinkerSubclass(th_friends, mobj_p, mobj_count);
+  P_UnArchiveThinkerSubclass(th_enemies, mobj_p, mobj_count);
+}
+
+extern mobj_t** blocklinks;
+extern int      bmapwidth;
+extern int      bmapheight;
+
+void P_ArchiveBlockLinks(void)
+{
+  int i;
+  int size;
+
+  size = bmapwidth * bmapheight;
+
+  for (i = 0; i < size; ++i)
+  {
+    int count = 0;
+    mobj_t*  mobj;
+
+    mobj = blocklinks[i];
+    while (mobj)
+    {
+      ++count;
+      mobj = mobj->bnext;
+    }
+
+    CheckSaveGame(count * sizeof(mobj_t*) + sizeof(count));
+
+    memcpy(save_p, &count, sizeof(count));
+    save_p += sizeof(count);
+
+    mobj = blocklinks[i];
+    while (mobj)
+    {
+      memcpy(save_p, &mobj->thinker.prev, sizeof(mobj->thinker.prev));
+      save_p += sizeof(mobj->thinker.prev);
+      mobj = mobj->bnext;
+    }
+  }
+}
+
+void P_UnArchiveBlockLinks(mobj_t** mobj_p, int mobj_count)
+{
+  int i;
+  int size;
+
+  size = bmapwidth * bmapheight;
+
+  for (i = 0; i < size; ++i)
+  {
+    int j;
+    int count;
+    mobj_t* mobj;
+    mobj_t** bprev;
+
+    memcpy(&count, save_p, sizeof(count));
+    save_p += sizeof(count);
+
+    bprev = &blocklinks[i];
+    for (j = 0; j < count; ++j)
+    {
+      memcpy(&mobj, save_p, sizeof(mobj));
+      save_p += sizeof(mobj);
+
+      mobj = mobj_p[P_GetMobj(mobj, mobj_count + 1)];
+
+      if (mobj)
+      {
+        *bprev = mobj;
+        mobj->bprev = bprev;
+        mobj->bnext = NULL;
+        bprev = &mobj->bnext;
+      }
+      else
+      {
+        I_Error("P_UnArchiveBlockLinks: mobj does not exist!\n");
+      }
+    }
+  }
 }
 
 // dsda - fix save / load synchronization
@@ -691,6 +857,15 @@ void P_TrueArchiveThinkers(void) {
 
         mobj->state = (state_t *)(mobj->state - states);
 
+        // Example:
+        // - Archvile is attacking a lost soul
+        // - The lost soul dies before the attack hits
+        // - The lost soul is marked for deletion
+        // - The archvile will still attack the spot where the lost soul was
+        // - We need to save such objects and remember they are marked for deletion
+        if (mobj->thinker.function == P_RemoveThinkerDelayed)
+          mobj->index = MARKED_FOR_DELETION;
+
         // killough 2/14/98: convert pointers into indices.
         // Fixes many savegame problems, by properly saving
         // target and tracer fields. Note: we store NULL if
@@ -771,6 +946,11 @@ void P_TrueArchiveThinkers(void) {
       save_p += sizeof target;
     }
   }
+
+  P_ArchiveBlockLinks();
+  P_ArchiveThinkerSubclasses();
+
+  dsda_ArchiveMSecNodes();
 }
 
 // dsda - fix save / load synchronization
@@ -832,7 +1012,7 @@ void P_TrueUnArchiveThinkers(void) {
       I_Error ("P_TrueUnArchiveThinkers: Unknown tc %i in size calculation", *save_p);
 
     // first table entry special: 0 maps to NULL
-    *(mobj_p = malloc(mobj_count * sizeof *mobj_p)) = 0;   // table of pointers
+    *(mobj_p = malloc((mobj_count + 1) * sizeof *mobj_p)) = 0;   // table of pointers
     save_p = sp;           // restore save pointer
   }
 
@@ -1018,8 +1198,20 @@ void P_TrueUnArchiveThinkers(void) {
           if (mobj->player)
             (mobj->player = &players[(size_t) mobj->player - 1]) -> mo = mobj;
 
-          P_SetThingPosition (mobj);
           mobj->info = &mobjinfo[mobj->type];
+
+          // Don't place objects marked for deletion
+          if (mobj->index == MARKED_FOR_DELETION)
+          {
+            mobj->thinker.function = P_RemoveThinkerDelayed;
+            P_AddThinker(&mobj->thinker);
+
+            // The references value must be nonzero to reach the target code
+            mobj->thinker.references = 1;
+            break;
+          }
+
+          P_SetThingPosition (mobj);
 
           // killough 2/28/98:
           // Fix for falling down into a wall after savegame loaded:
@@ -1076,6 +1268,13 @@ void P_TrueUnArchiveThinkers(void) {
             break;
         }
       }
+
+      // restore references now that targets are set
+      if (((mobj_t *) th)->index == MARKED_FOR_DELETION)
+      {
+        ((mobj_t *) th)->index = -1;
+        th->references--;
+      }
     }
 
   {  // killough 9/14/98: restore soundtargets
@@ -1089,6 +1288,11 @@ void P_TrueUnArchiveThinkers(void) {
       P_SetNewTarget(&sectors[i].soundtarget, mobj_p[P_GetMobj(target, mobj_count + 1)]);
     }
   }
+
+  P_UnArchiveBlockLinks(mobj_p, mobj_count);
+  P_UnArchiveThinkerSubclasses(mobj_p, mobj_count);
+
+  dsda_UnArchiveMSecNodes(mobj_p, mobj_count);
 
   free(mobj_p);    // free translation table
 

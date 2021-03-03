@@ -12,20 +12,10 @@
 // GNU General Public License for more details.
 //
 // DESCRIPTION:
-//	DSDA Key Frame
+//	DSDA MSecNode Management
 //
 
-#ifndef __DSDA_KEY_FRAME__
-#define __DSDA_KEY_FRAME__
+#include "r_defs.h"
 
-void dsda_InitKeyFrame(void);
-void dsda_ContinueKeyFrame(void);
-void dsda_StoreKeyFrame(unsigned char** buffer, byte complete);
-void dsda_RestoreKeyFrame(unsigned char* buffer, byte complete);
-int dsda_KeyFrameRestored(void);
-void dsda_StoreQuickKeyFrame(void);
-void dsda_RestoreQuickKeyFrame(void);
-void dsda_RewindAutoKeyFrame(void);
-void dsda_UpdateAutoKeyFrames(void);
-
-#endif
+void dsda_ArchiveMSecNodes(void);
+void dsda_UnArchiveMSecNodes(mobj_t** mobj_p, int mobj_count);

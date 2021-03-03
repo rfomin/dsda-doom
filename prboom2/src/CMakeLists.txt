@@ -27,8 +27,12 @@ set(COMMON_SRC
     dsda/global.h
     dsda/hud.c
     dsda/hud.h
+    dsda/input.c
+    dsda/input.h
     dsda/key_frame.c
     dsda/key_frame.h
+    dsda/msecnode.c
+    dsda/msecnode.h
     dsda/settings.c
     dsda/settings.h
     dsda/view_angle.c
