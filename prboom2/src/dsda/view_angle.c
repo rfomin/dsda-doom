@@ -30,9 +30,13 @@ extern int menuactive;
 
 #include "lprintf.h"
 
+#define HISTORY 5
+
 static angle_t dsda_GetRawViewAngle(player_t* player) {
   angle_t angleturn;
-  static angle_t angle_history[3];
+  int i;
+  static angle_t angle_history[HISTORY];
+  static angle_t predict_history[HISTORY];
   static int angle_index = 0;
   static int lasttime;
 
@@ -45,14 +49,22 @@ static angle_t dsda_GetRawViewAngle(player_t* player) {
   {
     lasttime = leveltime;
     angle_history[angle_index] = player->mo->angle;
+    predict_history[angle_index] = player->mo->angle + (angleturn << 16);
     angle_index++;
-    if (angle_index == 3) angle_index = 0;
+    if (angle_index == HISTORY) angle_index = 0;
   }
 
-  if (angle_history[0] == angle_history[1] && angle_history[1] == angle_history[2])
-    return player->mo->angle;
+  for (i = 0; i < HISTORY; ++i) {
+    int j = i ? i - 1 : HISTORY - 1;
 
-  return player->mo->angle + (angleturn << 16);
+    // if (angle_history[i] != angle_history[j])
+    //   return player->mo->angle + (angleturn << 16);
+
+    if (predict_history[i] != predict_history[j])
+      return player->mo->angle + (angleturn << 16);
+  }
+
+  return player->mo->angle;
 }
 
 static angle_t dsda_GetInterpolatedViewAngle(player_t* player, fixed_t frac) {
