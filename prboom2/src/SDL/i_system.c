@@ -123,7 +123,7 @@ int I_GetTime_RealTime (void)
 
 #ifndef PRBOOM_SERVER
 static unsigned int start_displaytime;
-static unsigned int displaytime;
+unsigned int displaytime;
 static dboolean InDisplay = false;
 static int saved_gametic = -1;
 dboolean realframe = false;

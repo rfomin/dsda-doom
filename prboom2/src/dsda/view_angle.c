@@ -27,6 +27,7 @@ extern signed short mouse_carry;
 extern int mousex;
 extern int leveltime;
 extern int menuactive;
+extern unsigned int displaytime;
 
 #include "lprintf.h"
 
@@ -41,6 +42,39 @@ static angle_t dsda_GetRawViewAngle(player_t* player, fixed_t frac) {
   int frac_index;
   angle_t angleturn;
   fixed_t sub_frac;
+
+  static int last_leveltime;
+  static double avg_displaytime;
+  static int display_count;
+  static double current_displaytime;
+  static angle_t prev_game_angle;
+  static angle_t game_angle;
+
+  double estimated_time;
+
+  if (avg_displaytime == 0) avg_displaytime = displaytime;
+  avg_displaytime = (avg_displaytime * 31 / 32) + ((double)displaytime / 32);
+
+  if (leveltime != last_leveltime) {
+    last_leveltime = leveltime;
+    current_displaytime = avg_displaytime;
+    display_count = 0;
+    prev_game_angle = game_angle;
+    game_angle = player->mo->angle;
+  }
+
+  estimated_time = display_count * current_displaytime + current_displaytime;
+  display_count++;
+
+  frac = FRACUNIT * (estimated_time / 28.57142857);
+  if (frac > FRACUNIT) frac = FRACUNIT;
+
+  if (!menuactive)
+    lprintf(
+      LO_INFO,
+      "Est: %.4f, dt: %.4f, i: %d\n",
+      estimated_time, avg_displaytime, display_count
+    );
 
   frac_index = frac / sub_frame_frac;
   if (frac == FRACUNIT)
@@ -58,13 +92,6 @@ static angle_t dsda_GetRawViewAngle(player_t* player, fixed_t frac) {
   sub_frac = (frac - frac_index * sub_frame_frac);
   sub_frac = FRACUNIT * sub_frac / sub_frame_frac;
   sub_frac = BETWEEN(0, FRACUNIT, sub_frac);
-
-  lprintf(
-    LO_INFO,
-    "Raw angle drawing: f = %f, full: %f\n",
-    (double)sub_frac / FRACUNIT,
-    (double)frac / FRACUNIT
-  );
 
   return prev_sub_angle + FixedMul(sub_frac, sub_angle - prev_sub_angle);
 }
