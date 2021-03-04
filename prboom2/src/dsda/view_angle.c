@@ -30,41 +30,43 @@ extern int menuactive;
 
 #include "lprintf.h"
 
-#define HISTORY 5
+#define ANGLE_SUB_FRAMES 2
+#define SUB_FRAME_FRAC (FRACUNIT / ANGLE_SUB_FRAMES)
 
-static angle_t dsda_GetRawViewAngle(player_t* player) {
+static angle_t dsda_GetRawViewAngle(player_t* player, fixed_t frac) {
+  static const fixed_t sub_frame_frac = FRACUNIT / ANGLE_SUB_FRAMES;
+  static angle_t sub_angle;
+  static angle_t prev_sub_angle;
+  static int last_frac_index;
+  int frac_index;
   angle_t angleturn;
-  int i;
-  static angle_t angle_history[HISTORY];
-  static angle_t predict_history[HISTORY];
-  static int angle_index = 0;
-  static int lasttime;
+  fixed_t sub_frac;
 
-  angleturn = mouse_carry - mousex;
+  frac_index = frac / sub_frame_frac;
+  if (frac == FRACUNIT)
+    frac_index--;
+  if (frac_index != last_frac_index) {
+    last_frac_index = frac_index;
 
-  if (!dsda_raw_mouse_longtics)
+    angleturn = mouse_carry - mousex;
     angleturn = (angleturn + 128) & 0xff00;
 
-  if (leveltime != lasttime)
-  {
-    lasttime = leveltime;
-    angle_history[angle_index] = player->mo->angle;
-    predict_history[angle_index] = player->mo->angle + (angleturn << 16);
-    angle_index++;
-    if (angle_index == HISTORY) angle_index = 0;
+    prev_sub_angle = sub_angle;
+    sub_angle = player->mo->angle + (angleturn << 16);
   }
 
-  for (i = 0; i < HISTORY; ++i) {
-    int j = i ? i - 1 : HISTORY - 1;
+  sub_frac = (frac - frac_index * sub_frame_frac);
+  sub_frac = FRACUNIT * sub_frac / sub_frame_frac;
+  sub_frac = BETWEEN(0, FRACUNIT, sub_frac);
 
-    // if (angle_history[i] != angle_history[j])
-    //   return player->mo->angle + (angleturn << 16);
+  lprintf(
+    LO_INFO,
+    "Raw angle drawing: f = %f, full: %f\n",
+    (double)sub_frac / FRACUNIT,
+    (double)frac / FRACUNIT
+  );
 
-    if (predict_history[i] != predict_history[j])
-      return player->mo->angle + (angleturn << 16);
-  }
-
-  return player->mo->angle;
+  return prev_sub_angle + FixedMul(sub_frac, sub_angle - prev_sub_angle);
 }
 
 static angle_t dsda_GetInterpolatedViewAngle(player_t* player, fixed_t frac) {
@@ -74,7 +76,7 @@ static angle_t dsda_GetInterpolatedViewAngle(player_t* player, fixed_t frac) {
 
 angle_t dsda_GetViewAngle(player_t* player, fixed_t frac) {
   if (dsda_raw_mouse)
-    return dsda_GetRawViewAngle(player);
+    return dsda_GetRawViewAngle(player, frac);
   else
     if (movement_smooth)
       return dsda_GetInterpolatedViewAngle(player, frac);

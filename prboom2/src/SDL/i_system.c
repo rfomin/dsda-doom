@@ -170,7 +170,28 @@ fixed_t I_GetTimeFrac (void)
     extern int renderer_fps;
     if ((interpolation_method == 0) || (prevsubframe <= 0) || (renderer_fps <= 0))
     {
+      static fixed_t last_frac = 0;
+      // lprintf(
+      //   LO_INFO,
+      //   "Frac calculation: now = %d, displaytime = %d, tic_vars.start = %d, sum = %d\n",
+      //   now, displaytime, tic_vars.start, (now - tic_vars.start + displaytime)
+      // );
       frac = (fixed_t)((now - tic_vars.start + displaytime) * FRACUNIT / tic_vars.step);
+      if (
+        frac < last_frac && (
+          last_frac < (FRACUNIT / 2) || (
+            last_frac > (FRACUNIT / 2) &&
+            frac > (FRACUNIT / 2)
+          )
+        )
+      )
+        frac = last_frac;
+      if (frac > last_frac || (last_frac > (FRACUNIT / 2) && frac < (FRACUNIT / 2)))
+      {
+        last_frac = frac;
+        last_frac = BETWEEN(0, FRACUNIT, last_frac);
+      }
+      // lprintf(LO_INFO, "Corrected frac: %d\n", frac);
     }
     else
     {
