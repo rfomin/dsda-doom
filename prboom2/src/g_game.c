@@ -99,6 +99,7 @@
 #include "dsda/tas.h"
 #include "dsda/time.h"
 #include "dsda/split_tracker.h"
+#include "statdump.h"
 
 #define SAVEGAMESIZE  0x20000
 #define SAVESTRINGSIZE  24
@@ -1987,6 +1988,11 @@ void G_DoCompleted (void)
   e6y_G_DoCompleted();//e6y
 
   dsda_WatchLevelCompletion();
+
+  if (gamemode == commercial || gamemap != 8)
+  {
+    StatCopy(&wminfo);
+  }
 
   WI_Start (&wminfo);
 }
