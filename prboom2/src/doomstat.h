@@ -211,18 +211,8 @@ enum menuactive_e {
 };
 extern enum menuactive_e menuactive; // Type of menu overlaid, if any
 
-extern  dboolean paused;        // Game Pause?
 extern  dboolean nodrawers;
 extern  dboolean noblit;
-
-#define PAUSE_COMMAND  1
-#define PAUSE_PLAYBACK 2
-
-#define interpolate_view (!paused && movement_smooth)
-#define paused_via_menu (!demoplayback && menuactive && !netgame)
-#define paused_during_playback (paused & PAUSE_PLAYBACK)
-#define paused_outside_demo (paused_during_playback || paused_via_menu)
-#define paused_camera (paused && !walkcamera.type)
 
 // This one is related to the 3-screen display mode.
 // ANG90 = left side, ANG270 = right
@@ -249,7 +239,6 @@ extern  int leveltime;  // tics in game play for par
 // --------------------------------------
 // DEMO playback/recording related stuff.
 
-extern  dboolean usergame;
 extern  dboolean demoplayback;
 extern  dboolean demorecording;
 extern  int demover;
@@ -270,6 +259,8 @@ extern  gamestate_t  gamestate;
 //  WAD, partly set at startup time.
 
 extern  int   gametic;
+
+#define logictic (gametic - basetic)
 
 //e6y
 extern  dboolean realframe;

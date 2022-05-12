@@ -89,6 +89,9 @@
 #include "i_main.h"
 
 #include "dsda/palette.h"
+#include "dsda/pause.h"
+#include "dsda/time.h"
+#include "dsda/gl/render_scale.h"
 
 //e6y: new mouse code
 static SDL_Cursor* cursors[2] = {NULL, NULL};
@@ -135,6 +138,7 @@ int             leds_always_off = 0; // Expected by m_misc, not relevant
 
 // Mouse handling
 extern int     usemouse;        // config file var
+extern int mouse_stutter_correction;
 static dboolean mouse_enabled; // usemouse, but can be overriden by -nomouse
 
 video_mode_t I_GetModeFromString(const char *modestr);
@@ -536,13 +540,6 @@ void I_ShutdownGraphics(void)
 {
   SDL_FreeCursor(cursors[1]);
   DeactivateMouse();
-}
-
-//
-// I_UpdateNoBlit
-//
-void I_UpdateNoBlit (void)
-{
 }
 
 //
@@ -1233,7 +1230,7 @@ void I_UpdateVideoMode(void)
   // running.  This feature is disabled on OS X, as it adds an ugly
   // scroll handle to the corner of the screen.
 #ifndef __APPLE__
-  if (!desired_fullscreen && V_IsSoftwareMode())
+  if (!desired_fullscreen)
     init_flags |= SDL_WINDOW_RESIZABLE;
 #endif
 
@@ -1263,6 +1260,7 @@ void I_UpdateVideoMode(void)
       SCREENWIDTH, SCREENHEIGHT,
       init_flags);
     sdl_glcontext = SDL_GL_CreateContext(sdl_window);
+    SDL_SetWindowMinimumSize(sdl_window, SCREENWIDTH, SCREENHEIGHT);
 
     gld_CheckHardwareGamma();
 #endif
@@ -1426,6 +1424,11 @@ void I_UpdateVideoMode(void)
   {
     M_ChangeFOV();
     deh_changeCompTranslucency();
+
+    // elim - Sets up viewport sizing for render-to-texture scaling
+    dsda_GLGetSDLWindowSize(sdl_window);
+    dsda_GLSetRenderViewportParams();
+    dsda_GLSetRenderViewport();
   }
 #endif
 
@@ -1444,6 +1447,34 @@ static void DeactivateMouse(void)
   SDL_SetRelativeMouseMode(SDL_FALSE);
 }
 
+// Interpolates mouse input to mitigate stuttering
+static void CorrectMouseStutter(int *x, int *y)
+{
+  static int x_remainder_old, y_remainder_old;
+  int x_remainder, y_remainder;
+  fixed_t fractic, correction_factor;
+
+  if (!mouse_stutter_correction)
+  {
+    return;
+  }
+
+  fractic = dsda_TickElapsedTime();
+
+  *x += x_remainder_old;
+  *y += y_remainder_old;
+
+  correction_factor = FixedDiv(fractic, fractic + 1000000 / TICRATE);
+
+  x_remainder = FixedMul(*x, correction_factor);
+  *x -= x_remainder;
+  x_remainder_old = x_remainder;
+
+  y_remainder = FixedMul(*y, correction_factor);
+  *y -= y_remainder;
+  y_remainder_old = y_remainder;
+}
+
 //
 // Read the change in mouse state to generate mouse motion events
 //
@@ -1456,6 +1487,7 @@ static void I_ReadMouse(void)
     int x, y;
 
     SDL_GetRelativeMouseState(&x, &y);
+    CorrectMouseStutter(&x, &y);
 
     if (x != 0 || y != 0)
     {
@@ -1510,7 +1542,7 @@ static dboolean MouseShouldBeGrabbed()
     return (demoplayback && gamestate == GS_LEVEL && !menuactive);
 
   // when menu is active or game is paused, release the mouse
-  if (menuactive || paused)
+  if (menuactive || dsda_Paused())
     return false;
 
   // only grab mouse when playing levels (but not demos)
@@ -1592,4 +1624,9 @@ void UpdateGrab(void)
 
 static void ApplyWindowResize(SDL_Event *resize_event)
 {
+  if (!V_IsOpenGLMode() || !sdl_window)
+    return;
+
+  dsda_GLGetSDLWindowSize(sdl_window);
+  dsda_GLSetRenderViewportParams();
 }

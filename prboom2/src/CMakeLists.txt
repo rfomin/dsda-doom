@@ -13,6 +13,10 @@ set(COMMON_SRC
     dsda.h
     dsda/analysis.c
     dsda/analysis.h
+    dsda/brute_force.c
+    dsda/brute_force.h
+    dsda/build.c
+    dsda/build.h
     dsda/command_display.c
     dsda/command_display.h
     dsda/compatibility.c
@@ -33,6 +37,8 @@ set(COMMON_SRC
     dsda/exhud.h
     dsda/ghost.c
     dsda/ghost.h
+    dsda/gl/render_scale.c
+    dsda/gl/render_scale.h
     dsda/global.c
     dsda/global.h
     dsda/hud.c
@@ -68,14 +74,20 @@ set(COMMON_SRC
     dsda/options.h
     dsda/palette.c
     dsda/palette.h
+    dsda/pause.c
+    dsda/pause.h
     dsda/pclass.c
     dsda/pclass.h
+    dsda/playback.c
+    dsda/playback.h
     dsda/save.c
     dsda/save.h
     dsda/settings.c
     dsda/settings.h
     dsda/sfx.c
     dsda/sfx.h
+    dsda/skip.c
+    dsda/skip.h
     dsda/sndinfo.c
     dsda/sndinfo.h
     dsda/spawn_number.c
@@ -86,6 +98,8 @@ set(COMMON_SRC
     dsda/sprite.h
     dsda/state.c
     dsda/state.h
+    dsda/stretch.c
+    dsda/stretch.h
     dsda/tas.c
     dsda/tas.h
     dsda/text_file.c
@@ -94,6 +108,8 @@ set(COMMON_SRC
     dsda/thing_id.h
     dsda/time.c
     dsda/time.h
+    dsda/utility.c
+    dsda/utility.h
     dstrings.c
     dstrings.h
     d_deh.c
@@ -158,8 +174,6 @@ set(COMMON_SRC
     hu_lib.h
     hu_stuff.c
     hu_stuff.h
-    hu_tracers.c
-    hu_tracers.h
     info.c
     info.h
     i_capture.c
@@ -316,16 +330,6 @@ set(PCSOUND_SOURCES
     PCSOUND/pcsound_win32.c
 )
 
-set(TEXTSCREEN_SOURCES
-    TEXTSCREEN/doomkeys.h
-    TEXTSCREEN/txt_main.h
-    TEXTSCREEN/txt_font.h
-    TEXTSCREEN/txt_largefont.h
-    TEXTSCREEN/txt_sdl.c
-    TEXTSCREEN/txt_sdl.h
-    TEXTSCREEN/txt_smallfont.h
-)
-
 set(DOOMMUSIC_SOURCES
     MUSIC/dbopl.c
     MUSIC/dbopl.h
@@ -364,7 +368,6 @@ set(PRBOOM_PLUS_SOURCES
     ${MUS2MID_SRC}
     ${SDLDOOM_SOURCES}
     ${PCSOUND_SOURCES}
-    ${TEXTSCREEN_SOURCES}
     ${DOOMMUSIC_SOURCES}
     ${EXTRA_FILES}
 )

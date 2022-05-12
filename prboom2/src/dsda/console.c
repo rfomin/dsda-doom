@@ -22,8 +22,12 @@
 #include "m_menu.h"
 #include "v_video.h"
 
+#include "dsda/brute_force.h"
+#include "dsda/exhud.h"
 #include "dsda/global.h"
+#include "dsda/playback.h"
 #include "dsda/tas.h"
+#include "dsda/utility.h"
 
 #include "console.h"
 
@@ -206,6 +210,176 @@ static dboolean console_CommandUnlock(const char* command, const char* args) {
   return true;
 }
 
+static dboolean console_TrackerAddLine(const char* command, const char* args) {
+  int id;
+
+  if (sscanf(args, "%i", &id))
+    return dsda_TrackLine(id);
+
+  return false;
+}
+
+static dboolean console_TrackerRemoveLine(const char* command, const char* args) {
+  int id;
+
+  if (sscanf(args, "%i", &id))
+    return dsda_UntrackLine(id);
+
+  return false;
+}
+
+static dboolean console_TrackerAddSector(const char* command, const char* args) {
+  int id;
+
+  if (sscanf(args, "%i", &id))
+    return dsda_TrackSector(id);
+
+  return false;
+}
+
+static dboolean console_TrackerRemoveSector(const char* command, const char* args) {
+  int id;
+
+  if (sscanf(args, "%i", &id))
+    return dsda_UntrackSector(id);
+
+  return false;
+}
+
+static dboolean console_TrackerAddMobj(const char* command, const char* args) {
+  int id;
+
+  if (sscanf(args, "%i", &id))
+    return dsda_TrackMobj(id);
+
+  return false;
+}
+
+static dboolean console_TrackerRemoveMobj(const char* command, const char* args) {
+  int id;
+
+  if (sscanf(args, "%i", &id))
+    return dsda_UntrackMobj(id);
+
+  return false;
+}
+
+static dboolean console_TrackerAddPlayer(const char* command, const char* args) {
+  return dsda_TrackPlayer(0);
+}
+
+static dboolean console_TrackerRemovePlayer(const char* command, const char* args) {
+  return dsda_UntrackPlayer(0);
+}
+
+static dboolean console_JumpTic(const char* command, const char* args) {
+  int tic;
+
+  if (sscanf(args, "%i", &tic)) {
+    if (tic < 0)
+      tic = logictic + tic;
+
+    dsda_JumpToLogicTic(tic);
+
+    return true;
+  }
+
+  return false;
+}
+
+static dboolean console_BruteForceStart(const char* command, const char* args) {
+  int depth;
+  int forwardmove_min, forwardmove_max;
+  int sidemove_min, sidemove_max;
+  int angleturn_min, angleturn_max;
+  char condition_args[CONSOLE_ENTRY_SIZE];
+  int arg_count;
+
+  dsda_ResetBruteForceConditions();
+
+  arg_count = sscanf(
+    args, "%i %i,%i %i,%i %i,%i %[^;]", &depth,
+    &forwardmove_min, &forwardmove_max,
+    &sidemove_min, &sidemove_max,
+    &angleturn_min, &angleturn_max,
+    condition_args
+  );
+
+  if (arg_count == 8) {
+    int i;
+    char** conditions;
+
+    conditions = dsda_SplitString(condition_args, ",");
+
+    if (!conditions)
+      return false;
+
+    for (i = 0; conditions[i]; ++i) {
+      dsda_bf_attribute_t attribute;
+      dsda_bf_operator_t operator;
+      fixed_t value;
+      char attr_s[4] = { 0 };
+      char oper_s[5] = { 0 };
+
+      if (sscanf(conditions[i], "%3s %4s %i", attr_s, oper_s, &value) == 3) {
+        int attr_i, oper_i;
+
+        for (attr_i = 0; attr_i < dsda_bf_attribute_max; ++attr_i)
+          if (!strcmp(attr_s, dsda_bf_attribute_names[attr_i]))
+            break;
+
+        if (attr_i == dsda_bf_attribute_max)
+          return false;
+
+        for (oper_i = dsda_bf_limit_trio_zero; oper_i < dsda_bf_limit_trio_max; ++oper_i)
+          if (!strcmp(oper_s, dsda_bf_limit_names[oper_i])) {
+            dsda_SetBruteForceTarget(attr_i, oper_i, value);
+            continue;
+          }
+
+        for (oper_i = 0; oper_i < dsda_bf_operator_max; ++oper_i)
+          if (!strcmp(oper_s, dsda_bf_operator_names[oper_i]))
+            break;
+
+        if (oper_i == dsda_bf_operator_max)
+          return false;
+
+        dsda_AddBruteForceCondition(attr_i, oper_i, value);
+      }
+      else if (sscanf(conditions[i], "%3s %4s", attr_s, oper_s) == 2) {
+        int attr_i, oper_i;
+
+        for (attr_i = 0; attr_i < dsda_bf_attribute_max; ++attr_i)
+          if (!strcmp(attr_s, dsda_bf_attribute_names[attr_i]))
+            break;
+
+        if (attr_i == dsda_bf_attribute_max)
+          return false;
+
+        for (oper_i = dsda_bf_limit_duo_zero; oper_i < dsda_bf_limit_duo_max; ++oper_i)
+          if (!strcmp(oper_s, dsda_bf_limit_names[oper_i]))
+            break;
+
+        if (oper_i == dsda_bf_limit_duo_max)
+          return false;
+
+        dsda_SetBruteForceTarget(attr_i, oper_i, 0);
+      }
+    }
+
+    free(conditions);
+
+    dsda_StartBruteForce(depth,
+                         forwardmove_min, forwardmove_max,
+                         sidemove_min, sidemove_max,
+                         angleturn_min, angleturn_max);
+
+    return true;
+  }
+
+  return false;
+}
+
 static dboolean console_Exit(const char* command, const char* args) {
   extern void M_ClearMenus(void);
 
@@ -237,6 +411,31 @@ static console_command_entry_t console_commands[] = {
   { "player.roundxy", console_PlayerRoundXY },
   { "command.lock", console_CommandLock },
   { "command.unlock", console_CommandUnlock },
+
+  // tracking
+  { "tracker.addline", console_TrackerAddLine },
+  { "t.al", console_TrackerAddLine },
+  { "tracker.removeline", console_TrackerRemoveLine },
+  { "t.rl", console_TrackerRemoveLine },
+  { "tracker.addsector", console_TrackerAddSector },
+  { "t.as", console_TrackerAddSector },
+  { "tracker.removesector", console_TrackerRemoveSector },
+  { "t.rs", console_TrackerRemoveSector },
+  { "tracker.addmobj", console_TrackerAddMobj },
+  { "t.am", console_TrackerAddMobj },
+  { "tracker.removemobj", console_TrackerRemoveMobj },
+  { "t.rm", console_TrackerRemoveMobj },
+  { "tracker.addplayer", console_TrackerAddPlayer },
+  { "t.ap", console_TrackerAddPlayer },
+  { "tracker.removeplayer", console_TrackerRemovePlayer },
+  { "t.rp", console_TrackerRemovePlayer },
+
+  // traversing time
+  { "jump.tic", console_JumpTic },
+
+  // brute force
+  { "bruteforce.start", console_BruteForceStart },
+  { "bf.start", console_BruteForceStart },
 
   // cheats
   { "idchoppers", console_BasicCheat },
@@ -330,7 +529,7 @@ void dsda_UpdateConsole(int ch, int action) {
     if (
       (ch >= 'a' && ch <= 'z') ||
       (ch >= '0' && ch <= '9') ||
-      (ch == ' ' || ch == '.' || ch == '-')
+      (ch == ' ' || ch == '.' || ch == '-' || ch == ';' || ch == ',')
     ) {
       console_entry[console_entry_index] = ch;
       if (console_entry_index < CONSOLE_ENTRY_SIZE)

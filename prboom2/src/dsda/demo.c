@@ -27,6 +27,7 @@
 #include "lprintf.h"
 #include "e6y.h"
 
+#include "command_display.h"
 #include "dsda/excmd.h"
 #include "dsda/map_format.h"
 
@@ -39,11 +40,23 @@ static byte* dsda_demo_write_buffer_p;
 static int dsda_demo_write_buffer_length;
 static char* dsda_demo_name;
 static int dsda_extra_demo_header_data_offset;
+static int largest_real_offset;
 
 #define DSDA_DEMO_VERSION 1
 #define DEMOMARKER 0x80
 
 static int dsda_demo_version;
+static int bytes_per_tic;
+
+int dsda_BytesPerTic(void) {
+  return bytes_per_tic;
+}
+
+void dsda_EvaluateBytesPerTic(void) {
+  bytes_per_tic = (longtics ? 5 : 4);
+  if (raven) bytes_per_tic += 2;
+  if (dsda_ExCmdDemo()) bytes_per_tic++;
+}
 
 static void dsda_EnsureDemoBufferSpace(size_t length) {
   int offset;
@@ -68,6 +81,37 @@ static void dsda_EnsureDemoBufferSpace(size_t length) {
     "dsda_EnsureDemoBufferSpace: expanding demo buffer %d\n",
     dsda_demo_write_buffer_length
   );
+}
+
+void dsda_CopyPendingCmd(ticcmd_t* cmd) {
+  if (largest_real_offset - dsda_DemoBufferOffset() >= bytes_per_tic) {
+    const byte* p = dsda_demo_write_buffer_p;
+
+    G_ReadOneTick(cmd, &p);
+  }
+  else {
+    memset(cmd, 0, sizeof(*cmd));
+  }
+}
+
+void dsda_RestoreCommandHistory(void) {
+  extern int dsda_command_history_size;
+
+  ticcmd_t cmd = { 0 };
+
+  if (demorecording && logictic && dsda_command_history_size) {
+    const byte* p;
+    int count;
+
+    count = MIN(logictic, dsda_command_history_size);
+
+    p = dsda_demo_write_buffer_p - bytes_per_tic * count;
+
+    while (p < dsda_demo_write_buffer_p) {
+      G_ReadOneTick(&cmd, &p);
+      dsda_AddCommandToCommandDisplay(&cmd);
+    }
+  }
 }
 
 void dsda_InitDemo(char* name) {
@@ -136,7 +180,7 @@ void dsda_EndDemoRecording(void) {
   demorecording = false;
 
   end_marker_location = dsda_demo_write_buffer_p - dsda_demo_write_buffer;
-  demo_tic_count = gametic - basetic;
+  demo_tic_count = logictic;
 
   dsda_WriteToDemo(&end_marker, 1);
 
@@ -179,11 +223,18 @@ int dsda_CopyDemoBuffer(void* buffer) {
 }
 
 void dsda_SetDemoBufferOffset(int offset) {
+  int current_offset;
+
   if (dsda_demo_write_buffer == NULL) return;
 
+  current_offset = dsda_DemoBufferOffset();
+
   // Cannot load forward (demo buffer would desync)
-  if (offset > dsda_DemoBufferOffset())
+  if (offset > current_offset)
     I_Error("dsda_SetDemoBufferOffset: Impossible time traveling detected.");
+
+  if (current_offset > largest_real_offset)
+    largest_real_offset = current_offset;
 
   dsda_demo_write_buffer_p = dsda_demo_write_buffer + offset;
 }

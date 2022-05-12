@@ -23,6 +23,7 @@
 #include "doomstat.h"
 
 #include "dsda/hud.h"
+#include "dsda/utility.h"
 
 #include "coordinate_display.h"
 
@@ -36,22 +37,11 @@
 static dsda_text_t dsda_x_display;
 static dsda_text_t dsda_y_display;
 static dsda_text_t dsda_z_display;
+static dsda_text_t dsda_a_display;
 static dsda_text_t dsda_v_display;
 static dsda_text_t dsda_vx_display;
 static dsda_text_t dsda_vy_display;
 static char dsda_velocity_color;
-
-static void dsda_BreakDownCoordinate(int* x, int* base, int* frac) {
-  *base = *x >> FRACBITS;
-  *frac = *x & 0xffff;
-
-  if (*base < 0) {
-    if (*frac != 0) {
-      *base += 1;
-      *frac = 0xffff - *frac + 1;
-    }
-  }
-}
 
 static double dsda_CalculateVelocity(void) {
   double vx, vy;
@@ -62,31 +52,51 @@ static double dsda_CalculateVelocity(void) {
   return sqrt(vx * vx + vy * vy);
 }
 
-static void dsda_WriteCoordinate(dsda_text_t* text, int* x, const char* ch) {
-  int base, frac;
+static void dsda_WriteCoordinate(dsda_text_t* text, fixed_t x, const char* ch) {
+  char str[FIXED_STRING_LENGTH];
   const char* format;
 
-  dsda_BreakDownCoordinate(x, &base, &frac);
+  dsda_FixedToString(str, x);
 
-  if (frac)
-    snprintf(text->msg, sizeof(text->msg), "%s: %i.%05i", ch, base, frac);
-  else
-    snprintf(text->msg, sizeof(text->msg), "%s: %i", ch, base);
+  snprintf(text->msg, sizeof(text->msg), "%s: %s", ch, str);
 
   dsda_RefreshHudText(text);
 }
 
-static void dsda_WriteCoordinateSimple(dsda_text_t* text, int* x, const char* ch) {
-  int base, frac;
+static void dsda_WriteAngle(dsda_text_t* text, angle_t x, const char* ch) {
+  dsda_angle_t value;
   const char* format;
 
-  dsda_BreakDownCoordinate(x, &base, &frac);
+  value = dsda_SplitAngle(x);
 
-  if (frac)
-    snprintf(text->msg, sizeof(text->msg), "\x1b%c%s: %i.%03i",
-             dsda_velocity_color, ch, base, 1000 * frac / 0xffff);
+  if (value.frac) {
+    if (value.negative && !value.base)
+      snprintf(text->msg, sizeof(text->msg), "%s: -%i.%03i", ch, value.base, value.frac);
+    else
+      snprintf(text->msg, sizeof(text->msg), "%s: %i.%03i", ch, value.base, value.frac);
+  }
   else
-    snprintf(text->msg, sizeof(text->msg), "\x1b%c%s: %i", dsda_velocity_color, ch, base);
+    snprintf(text->msg, sizeof(text->msg), "%s: %i", ch, value.base);
+
+  dsda_RefreshHudText(text);
+}
+
+static void dsda_WriteCoordinateSimple(dsda_text_t* text, fixed_t x, const char* ch) {
+  dsda_fixed_t value;
+  const char* format;
+
+  value = dsda_SplitFixed(x);
+
+  if (value.frac) {
+    if (value.negative && !value.base)
+      snprintf(text->msg, sizeof(text->msg), "\x1b%c%s: -%i.%03i",
+               dsda_velocity_color, ch, value.base, 1000 * value.frac / 0xffff);
+    else
+      snprintf(text->msg, sizeof(text->msg), "\x1b%c%s: %i.%03i",
+               dsda_velocity_color, ch, value.base, 1000 * value.frac / 0xffff);
+  }
+  else
+    snprintf(text->msg, sizeof(text->msg), "\x1b%c%s: %i", dsda_velocity_color, ch, value.base);
 
   dsda_RefreshHudText(text);
 }
@@ -121,7 +131,7 @@ void dsda_InitCoordinateDisplay(patchnum_t* font) {
     font,
     HU_FONTSTART,
     g_cr_green,
-    VPT_ALIGN_LEFT_TOP
+    VPT_ALIGN_LEFT_TOP | VPT_EX_TEXT
   );
 
   HUlib_initTextLine(
@@ -131,7 +141,7 @@ void dsda_InitCoordinateDisplay(patchnum_t* font) {
     font,
     HU_FONTSTART,
     g_cr_green,
-    VPT_ALIGN_LEFT_TOP
+    VPT_ALIGN_LEFT_TOP | VPT_EX_TEXT
   );
 
   HUlib_initTextLine(
@@ -141,53 +151,65 @@ void dsda_InitCoordinateDisplay(patchnum_t* font) {
     font,
     HU_FONTSTART,
     g_cr_green,
-    VPT_ALIGN_LEFT_TOP
+    VPT_ALIGN_LEFT_TOP | VPT_EX_TEXT
+  );
+
+  HUlib_initTextLine(
+    &dsda_a_display.text,
+    COORDINATE_TEXT_X,
+    COORDINATE_TEXT_Y + 24,
+    font,
+    HU_FONTSTART,
+    g_cr_green,
+    VPT_ALIGN_LEFT_TOP | VPT_EX_TEXT
   );
 
   HUlib_initTextLine(
     &dsda_v_display.text,
     COORDINATE_TEXT_X,
-    COORDINATE_TEXT_Y + 32,
+    COORDINATE_TEXT_Y + 40,
     font,
     HU_FONTSTART,
     g_cr_gray,
-    VPT_ALIGN_LEFT_TOP
+    VPT_ALIGN_LEFT_TOP | VPT_EX_TEXT
   );
 
   HUlib_initTextLine(
     &dsda_vx_display.text,
     COORDINATE_TEXT_X,
-    COORDINATE_TEXT_Y + 40,
+    COORDINATE_TEXT_Y + 48,
     font,
     HU_FONTSTART,
     g_cr_gray,
-    VPT_ALIGN_LEFT_TOP
+    VPT_ALIGN_LEFT_TOP | VPT_EX_TEXT
   );
 
   HUlib_initTextLine(
     &dsda_vy_display.text,
     COORDINATE_TEXT_X,
-    COORDINATE_TEXT_Y + 48,
+    COORDINATE_TEXT_Y + 56,
     font,
     HU_FONTSTART,
     g_cr_gray,
-    VPT_ALIGN_LEFT_TOP
+    VPT_ALIGN_LEFT_TOP | VPT_EX_TEXT
   );
 }
 
 void dsda_UpdateCoordinateDisplay(void) {
-  dsda_WriteCoordinate(&dsda_x_display, &players[displayplayer].mo->x, "X");
-  dsda_WriteCoordinate(&dsda_y_display, &players[displayplayer].mo->y, "Y");
-  dsda_WriteCoordinate(&dsda_z_display, &players[displayplayer].mo->z, "Z");
+  dsda_WriteCoordinate(&dsda_x_display, players[displayplayer].mo->x, "X");
+  dsda_WriteCoordinate(&dsda_y_display, players[displayplayer].mo->y, "Y");
+  dsda_WriteCoordinate(&dsda_z_display, players[displayplayer].mo->z, "Z");
+  dsda_WriteAngle(&dsda_a_display, players[displayplayer].mo->angle, "A");
   dsda_WriteVelocity(&dsda_v_display);
-  dsda_WriteCoordinateSimple(&dsda_vx_display, &players[displayplayer].mo->momx, "X");
-  dsda_WriteCoordinateSimple(&dsda_vy_display, &players[displayplayer].mo->momy, "Y");
+  dsda_WriteCoordinateSimple(&dsda_vx_display, players[displayplayer].mo->momx, "X");
+  dsda_WriteCoordinateSimple(&dsda_vy_display, players[displayplayer].mo->momy, "Y");
 }
 
 void dsda_DrawCoordinateDisplay(void) {
   HUlib_drawTextLine(&dsda_x_display.text, false);
   HUlib_drawTextLine(&dsda_y_display.text, false);
   HUlib_drawTextLine(&dsda_z_display.text, false);
+  HUlib_drawTextLine(&dsda_a_display.text, false);
   HUlib_drawTextLine(&dsda_v_display.text, false);
   HUlib_drawTextLine(&dsda_vx_display.text, false);
   HUlib_drawTextLine(&dsda_vy_display.text, false);
@@ -197,6 +219,7 @@ void dsda_EraseCoordinateDisplay(void) {
   HUlib_eraseTextLine(&dsda_x_display.text);
   HUlib_eraseTextLine(&dsda_y_display.text);
   HUlib_eraseTextLine(&dsda_z_display.text);
+  HUlib_eraseTextLine(&dsda_a_display.text);
   HUlib_eraseTextLine(&dsda_v_display.text);
   HUlib_eraseTextLine(&dsda_vx_display.text);
   HUlib_eraseTextLine(&dsda_vy_display.text);

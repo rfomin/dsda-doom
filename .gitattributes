@@ -174,7 +174,6 @@ prboom2/data/lumps/crorange.lmp -text
 prboom2/data/lumps/crred.lmp -text
 prboom2/data/lumps/crtan.lmp -text
 prboom2/data/lumps/cryellow.lmp -text
-prboom2/data/lumps/endboom.lmp -text svneol=unset#application/octet-stream
 prboom2/data/lumps/gammatbl.lmp -text svneol=unset#application/octet-stream
 prboom2/data/lumps/glfp.lmp -text
 prboom2/data/lumps/glshadow.lmp -text
@@ -398,8 +397,6 @@ prboom2/src/SDL/SDL_windows_main.c -text
 prboom2/src/TEXTSCREEN/Makefile.am -text
 prboom2/src/TEXTSCREEN/txt_largefont.h -text
 prboom2/src/gl_shader.c -text
-prboom2/src/hu_tracers.c -text
-prboom2/src/hu_tracers.h -text
 prboom2/tests/demo-testing.csv -text
 prboom2/tests/donut_av.wad -text
 prboom2/tests/heightlist_overflow.wad -text

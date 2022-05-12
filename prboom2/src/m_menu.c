@@ -71,18 +71,24 @@
 #include "i_sound.h"
 #include "r_demo.h"
 #include "r_fps.h"
+#include "r_main.h"
 #include "f_finale.h"
 #include "e6y.h"//e6y
+
 #include "dsda/global.h"
 #include "dsda/settings.h"
 #include "dsda/key_frame.h"
 #include "dsda/input.h"
 #include "dsda/palette.h"
 #include "dsda/save.h"
+#include "dsda/skip.h"
 #include "dsda/time.h"
 #include "dsda/console.h"
+#include "dsda/stretch.h"
+
 #include "heretic/mn_menu.h"
 #include "heretic/sb_bar.h"
+
 #ifdef _WIN32
 #include "e6y_launcher.h"
 #endif
@@ -1023,13 +1029,6 @@ void M_SaveGame (int choice)
 {
   delete_verify = false;
 
-  // killough 10/6/98: allow savegames during single-player demo playback
-  if (!usergame && (!demoplayback || netgame))
-    {
-    M_StartMessage(s_SAVEDEAD,NULL,false); // Ty 03/27/98 - externalized
-    return;
-    }
-
   if (gamestate != GS_LEVEL)
     return;
 
@@ -1156,25 +1155,6 @@ static void M_QuitResponse(int ch)
   if (ch != 'y')
     return;
 
-  //e6y: Optional removal of a quit sound
-  if (!raven && !netgame && showendoom && !nosfxparm && snd_card)
-  {
-    int i;
-
-    if (gamemode == commercial)
-      S_StartSound(NULL,quitsounds2[(gametic>>2)&7]);
-    else
-      S_StartSound(NULL,quitsounds[(gametic>>2)&7]);
-
-    // wait till all sounds stopped or 3 seconds are over
-    i = 30;
-    while (i>0) {
-      I_uSleep(100000); // CPhipps - don't thrash cpu in this loop
-      if (!I_AnySoundStillPlaying())
-        break;
-      i--;
-    }
-  }
   //e6y: I_SafeExit instead of exit - prevent recursive exits
   I_SafeExit(0); // killough
 }
@@ -1420,11 +1400,6 @@ void M_Mouse(int choice, int *sens)
 
 void M_QuickSave(void)
 {
-  if (!usergame && (!demoplayback || netgame)) { /* killough 10/98 */
-    S_StartSound(NULL,g_sfx_oof);
-    return;
-  }
-
   if (gamestate != GS_LEVEL)
     return;
 
@@ -2337,6 +2312,8 @@ setup_menu_t raven_keys_settings[];
 setup_menu_t heretic_keys_settings[];
 setup_menu_t hexen_keys_settings[];
 setup_menu_t dsda_keys_settings[];
+setup_menu_t build_keys_settings1[];
+setup_menu_t build_keys_settings2[];
 
 // The table which gets you from one screen table to the next.
 
@@ -2353,6 +2330,8 @@ setup_menu_t* keys_settings[] =
   heretic_keys_settings,
   hexen_keys_settings,
   dsda_keys_settings,
+  build_keys_settings1,
+  build_keys_settings2,
   NULL
 };
 
@@ -2676,6 +2655,56 @@ setup_menu_t dsda_keys_settings[] = {
   { "Cheat Code Entry", S_INPUT, m_scrn, KB_X, KB_Y + 16 * 8, { 0 }, dsda_input_cheat_codes },
 
   { "<-", S_SKIP | S_PREV, m_null, KB_PREV, KB_Y + 20 * 8, { hexen_keys_settings } },
+  { "->", S_SKIP | S_NEXT, m_null, KB_NEXT, KB_Y + 20 * 8, { build_keys_settings1 } },
+
+  // Final entry
+  { 0, S_SKIP | S_END, m_null }
+};
+
+setup_menu_t build_keys_settings1[] = {
+  { "Build Mode (1)", S_SKIP | S_TITLE, m_null, KB_X, KB_Y + 0 * 8 },
+  { "Toggle Build Mode", S_INPUT, m_scrn, KB_X, KB_Y + 1 * 8, { 0 }, dsda_input_build },
+  { "Advance Frame", S_INPUT, m_build, KB_X, KB_Y + 2 * 8, { 0 }, dsda_input_build_advance_frame },
+  { "Reverse Frame", S_INPUT, m_build, KB_X, KB_Y + 3 * 8, { 0 }, dsda_input_build_reverse_frame },
+  { "Reset Command", S_INPUT, m_build, KB_X, KB_Y + 4 * 8, { 0 }, dsda_input_build_reset_command },
+  { "Toggle Source", S_INPUT, m_build, KB_X, KB_Y + 5 * 8, { 0 }, dsda_input_build_source },
+
+  { "Controls", S_SKIP | S_TITLE, m_null, KB_X, KB_Y + 7 * 8 },
+  { "Forward", S_INPUT, m_build, KB_X, KB_Y + 8 * 8, { 0 }, dsda_input_build_forward },
+  { "Backward", S_INPUT, m_build, KB_X, KB_Y + 9 * 8, { 0 }, dsda_input_build_backward },
+  { "Fine Forward", S_INPUT, m_build, KB_X, KB_Y + 10 * 8, { 0 }, dsda_input_build_fine_forward },
+  { "Fine Backward", S_INPUT, m_build, KB_X, KB_Y + 11 * 8, { 0 }, dsda_input_build_fine_backward },
+  { "Turn Left", S_INPUT, m_build, KB_X, KB_Y + 12 * 8, { 0 }, dsda_input_build_turn_left },
+  { "Turn Right", S_INPUT, m_build, KB_X, KB_Y + 13 * 8, { 0 }, dsda_input_build_turn_right },
+  { "Strafe Left", S_INPUT, m_build, KB_X, KB_Y + 14 * 8, { 0 }, dsda_input_build_strafe_left },
+  { "Strafe Right", S_INPUT, m_build, KB_X, KB_Y + 15 * 8, { 0 }, dsda_input_build_strafe_right },
+  { "Fine Strafe Left", S_INPUT, m_build, KB_X, KB_Y + 16 * 8, { 0 }, dsda_input_build_fine_strafe_left },
+  { "Fine Strafe Right", S_INPUT, m_build, KB_X, KB_Y + 17 * 8, { 0 }, dsda_input_build_fine_strafe_right },
+  { "Use", S_INPUT, m_build, KB_X, KB_Y + 18 * 8, { 0 }, dsda_input_build_use },
+
+  { "<-", S_SKIP | S_PREV, m_null, KB_PREV, KB_Y + 20 * 8, { hexen_keys_settings } },
+  { "->", S_SKIP | S_NEXT, m_null, KB_NEXT, KB_Y + 20 * 8, { build_keys_settings2 } },
+
+  // Final entry
+  { 0, S_SKIP | S_END, m_null }
+};
+
+setup_menu_t build_keys_settings2[] = {
+  { "Build Mode (2)", S_SKIP | S_TITLE, m_null, KB_X, KB_Y + 0 * 8 },
+  { "Fire", S_INPUT, m_build, KB_X, KB_Y + 1 * 8, { 0 }, dsda_input_build_fire },
+  { "Fist", S_INPUT, m_build, KB_X, KB_Y + 2 * 8, { 0 }, dsda_input_build_weapon1 },
+  { "Pistol", S_INPUT, m_build, KB_X, KB_Y + 3 * 8, { 0 }, dsda_input_build_weapon2 },
+  { "Shotgun", S_INPUT, m_build, KB_X, KB_Y + 4 * 8, { 0 }, dsda_input_build_weapon3 },
+  { "Chaingun", S_INPUT, m_build, KB_X, KB_Y + 5 * 8, { 0 }, dsda_input_build_weapon4 },
+  { "Rocket", S_INPUT, m_build, KB_X, KB_Y + 6 * 8, { 0 }, dsda_input_build_weapon5 },
+  { "Plasma", S_INPUT, m_build, KB_X, KB_Y + 7 * 8, { 0 }, dsda_input_build_weapon6 },
+  { "BFG", S_INPUT, m_build, KB_X, KB_Y + 8 * 8, { 0 }, dsda_input_build_weapon7 },
+  { "Chainsaw", S_INPUT, m_build, KB_X, KB_Y + 9 * 8, { 0 }, dsda_input_build_weapon8 },
+  { "SSG", S_INPUT, m_build, KB_X, KB_Y + 10 * 8, { 0 }, dsda_input_build_weapon9 },
+
+  { "<-", S_SKIP | S_PREV, m_null, KB_PREV, KB_Y + 20 * 8, { build_keys_settings1 } },
+
+  // Final entry
   { 0, S_SKIP | S_END, m_null }
 };
 
@@ -3146,6 +3175,7 @@ void M_DrawAutoMap(void)
 
 extern int usejoystick, usemouse, default_mus_card, default_snd_card;
 extern int detect_voices, realtic_clock_rate, tran_filter_pct;
+extern int mouse_stutter_correction;
 
 setup_menu_t video_settings[], audio_settings[], device_settings[], misc_settings[];
 setup_menu_t display_settings[], opengl_settings1[], opengl_settings2[];
@@ -3282,9 +3312,10 @@ setup_menu_t device_settings[] = {
   { "Max View Pitch", S_NUM, m_null, G_X, G_Y + 11 * 8, { "movement_maxviewpitch" }, 0, M_ChangeMaxViewPitch },
   { "Mouse Strafe Divisor", S_NUM,   m_null, G_X, G_Y + 12 * 8, { "movement_mousestrafedivisor" } },
   { "Fine Sensitivity", S_NUM, m_null, G_X, G_Y + 13 * 8, { "dsda_fine_sensitivity" } },
+  { "Mouse Stutter Correction", S_YESNO, m_null, G_X, G_Y + 14 * 8, { "mouse_stutter_correction" } },
 
-  { "Keyboard", S_SKIP | S_TITLE, m_null, G_X, G_Y + 15 * 8 },
-  { "Enable Cheat Code Entry", S_YESNO, m_dsda, G_X, G_Y + 16 * 8, { "dsda_cheat_codes" } },
+  { "Keyboard", S_SKIP | S_TITLE, m_null, G_X, G_Y + 16 * 8 },
+  { "Enable Cheat Code Entry", S_YESNO, m_dsda, G_X, G_Y + 17 * 8, { "dsda_cheat_codes" } },
 
   { "<-", S_SKIP | S_PREV, m_null, KB_PREV, KB_Y + 20 * 8, { audio_settings } },
   { "->", S_SKIP | S_NEXT, m_null, KB_NEXT, KB_Y + 20 * 8, { misc_settings } },
@@ -3296,13 +3327,14 @@ setup_menu_t misc_settings[] = {
   { "Maximum number of player corpses", S_NUM | S_PRGWARN, m_null, G_X, G_Y + 2 * 8, { "max_player_corpse" } },
   { "Default skill level", S_CHOICE, m_null, G_X, G_Y + 3 * 8, { "default_skill" }, 0, NULL, gen_skillstrings },
   { "Default compatibility level", S_CHOICE, m_null, G_X, G_Y + 4 * 8, { "default_compatibility_level" }, 0, NULL, &gen_compstrings[1] },
-  { "Wipe Screen Effect", S_YESNO,  m_null, G_X, G_Y + 6 * 8, { "render_wipescreen" } },
+  { "Wipe Screen Effect", S_YESNO,  m_null, G_X, G_Y + 5 * 8, { "render_wipescreen" } },
 
-  { "Quality Of Life", S_SKIP | S_TITLE, m_null, G_X, G_Y + 8 * 8 },
-  { "Rewind Interval (s)", S_NUM, m_null, G_X, G_Y + 9 * 8, { "dsda_auto_key_frame_interval" } },
-  { "Rewind Depth", S_NUM | S_PRGWARN, m_null, G_X, G_Y + 10 * 8, { "dsda_auto_key_frame_depth" } },
-  { "Rewind Timeout (ms)", S_NUM, m_null, G_X, G_Y + 11 * 8, { "dsda_auto_key_frame_timeout" } },
-  { "Use Extended Hud", S_YESNO, m_dsda, G_X, G_Y + 12 * 8, { "dsda_exhud" } },
+  { "Quality Of Life", S_SKIP | S_TITLE, m_null, G_X, G_Y + 7 * 8 },
+  { "Rewind Interval (s)", S_NUM, m_null, G_X, G_Y + 8 * 8, { "dsda_auto_key_frame_interval" } },
+  { "Rewind Depth", S_NUM | S_PRGWARN, m_null, G_X, G_Y + 9 * 8, { "dsda_auto_key_frame_depth" } },
+  { "Rewind Timeout (ms)", S_NUM, m_null, G_X, G_Y + 10 * 8, { "dsda_auto_key_frame_timeout" } },
+  { "Use Extended Hud", S_YESNO, m_dsda, G_X, G_Y + 11 * 8, { "dsda_exhud" } },
+  { "Extended Hud Scale", S_NUM, m_null, G_X, G_Y + 12 * 8, { "dsda_ex_text_scale" }, 0, dsda_SetupStretchParams },
   { "Hide Status Bar Horns", S_YESNO, m_null, G_X, G_Y + 13 * 8, { "dsda_hide_horns" } },
   { "Organize My Save Files", S_YESNO, m_null, G_X, G_Y + 14 * 8, { "dsda_organized_saves" } },
   { "Skip Quit Prompt", S_YESNO, m_null, G_X, G_Y + 15 * 8, { "dsda_skip_quit_prompt" } },
@@ -4802,10 +4834,9 @@ dboolean M_Responder (event_t* ev) {
     }
     if (dsda_InputActivated(dsda_input_nextlevel))
     {
-      if (demoplayback && !doSkip && singledemo)
+      if (demoplayback && !dsda_SkipMode() && singledemo)
       {
-        demo_stoponnext = true;
-        G_SkipDemoStart();
+        dsda_SkipToNextMap();
         return true;
       }
       else
@@ -4823,10 +4854,9 @@ dboolean M_Responder (event_t* ev) {
 
     if (dsda_InputActivated(dsda_input_demo_endlevel))
     {
-      if (demoplayback && !doSkip && singledemo)
+      if (demoplayback && !dsda_SkipMode() && singledemo)
       {
-        demo_stoponend = true;
-        G_SkipDemoStart();
+        dsda_SkipToEndOfMap();
         return true;
       }
     }
@@ -4835,14 +4865,7 @@ dboolean M_Responder (event_t* ev) {
     {
       if (demoplayback && singledemo)
       {
-        if (doSkip)
-        {
-          G_SkipDemoStop();
-        }
-        else
-        {
-          G_SkipDemoStart();
-        }
+        dsda_ToggleSkipMode();
         return true;
       }
     }

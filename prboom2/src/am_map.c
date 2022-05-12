@@ -63,6 +63,7 @@
 #include "dsda/input.h"
 #include "dsda/map_format.h"
 #include "dsda/settings.h"
+#include "dsda/stretch.h"
 
 //jff 1/7/98 default automap colors added
 int mapcolor_back;    // map background
@@ -1794,7 +1795,7 @@ static void AM_drawLineCharacter
 
 INLINE static void AM_GetMobjPosition(mobj_t *mo, mpoint_t *p, angle_t *angle)
 {
-  if (interpolate_view)
+  if (R_ViewInterpolation())
   {
     p->x = mo->PrevX + FixedMul(tic_vars.frac, mo->x - mo->PrevX);
     p->y = mo->PrevY + FixedMul(tic_vars.frac, mo->y - mo->PrevY);
@@ -2350,7 +2351,7 @@ static void AM_drawMarks(void)
             switch (render_stretch_hud)
             {
               default:
-              case patch_stretch_16x10:
+              case patch_stretch_not_adjusted:
                 fx = (float)p.fx / patches_scalex;
                 fy = (float)p.fy * 200.0f / SCREENHEIGHT;
 
@@ -2359,7 +2360,7 @@ static void AM_drawMarks(void)
 
                 flags = VPT_ALIGN_LEFT | VPT_STRETCH;
                 break;
-              case patch_stretch_4x3:
+              case patch_stretch_doom_format:
                 fx = (float)p.fx * 320.0f / WIDE_SCREENWIDTH;
                 fy = (float)p.fy * 200.0f / WIDE_SCREENHEIGHT;
 
@@ -2368,7 +2369,7 @@ static void AM_drawMarks(void)
 
                 flags = VPT_ALIGN_LEFT | VPT_STRETCH;
                 break;
-              case patch_stretch_full:
+              case patch_stretch_fit_to_width:
                 fx = (float)p.fx * 320.0f / SCREENWIDTH;
                 fy = (float)p.fy * 200.0f / SCREENHEIGHT;
 

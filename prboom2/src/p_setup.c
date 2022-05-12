@@ -53,7 +53,6 @@
 #include "v_video.h"
 #include "r_demo.h"
 #include "r_fps.h"
-#include "hu_tracers.h"
 #include "g_overflow.h"
 #include "am_map.h"
 #include "e6y.h"//e6y
@@ -63,6 +62,7 @@
 #include "dsda/line_special.h"
 #include "dsda/map_format.h"
 #include "dsda/mapinfo.h"
+#include "dsda/skip.h"
 
 #include "hexen/p_acs.h"
 #include "hexen/p_anim.h"
@@ -160,6 +160,7 @@ int       *blockmaplump;          // was short -- killough
 fixed_t   bmaporgx, bmaporgy;     // origin of block map
 
 mobj_t    **blocklinks;           // for thing chains
+int       blocklinks_count;
 
 // MAES: extensions to support 512x512 blockmaps.
 // They represent the maximum negative number which represents
@@ -2470,7 +2471,8 @@ static void P_LoadBlockMap (int lump)
   }
 
   // clear out mobj chains - CPhipps - use calloc
-  blocklinks = calloc_IfSameLevel(blocklinks, bmapwidth * bmapheight, sizeof(*blocklinks));
+  blocklinks_count = bmapwidth * bmapheight;
+  blocklinks = calloc_IfSameLevel(blocklinks, blocklinks_count, sizeof(*blocklinks));
   blockmap = blockmaplump+4;
 
   // MAES: set blockmapxneg and blockmapyneg
@@ -2966,7 +2968,6 @@ void P_SetupLevel(int episode, int map, int playermask, skill_t skill)
 
   dsda_WatchBeforeLevelSetup();
 
-  ClearThingsHealthTracers();
   R_StopAllInterpolations();
 
   totallive = totalkills = totalitems = totalsecret = wminfo.maxfrags = 0;
@@ -2977,9 +2978,6 @@ void P_SetupLevel(int episode, int map, int playermask, skill_t skill)
     players[i].killcount = players[i].secretcount = players[i].itemcount = 0;
     players[i].maxkilldiscount = 0;//e6y
   }
-
-  // Initial height of PointOfView will be set by player think.
-  players[consoleplayer].viewz = 1;
 
   // Make sure all sounds are stopped before Z_FreeTag.
   S_Start();
@@ -3140,7 +3138,6 @@ void P_SetupLevel(int episode, int map, int playermask, skill_t skill)
   deathmatch_p = deathmatchstarts;
   for (i = 0; i < g_maxplayers; i++)
     players[i].mo = NULL;
-  TracerClearStarts();
 
   P_MapStart();
 
@@ -3190,6 +3187,9 @@ void P_SetupLevel(int episode, int map, int playermask, skill_t skill)
         I_Error("P_SetupLevel: missing player %d start\n", i+1);
   }
 
+  players[consoleplayer].viewz = players[consoleplayer].mo->z +
+                                 players[consoleplayer].viewheight;
+
   if (players[consoleplayer].cheats & CF_FLY)
   {
     players[consoleplayer].mo->flags |= (MF_NOGRAVITY | MF_FLY);
@@ -3227,7 +3227,7 @@ void P_SetupLevel(int episode, int map, int playermask, skill_t skill)
     // Do not preprocess GL data during skipping,
     // because it potentially will not be used.
     // But preprocessing must be called immediately after stop of skipping.
-    if (!doSkip)
+    if (!dsda_SkipMode())
     {
       // proff 11/99: calculate all OpenGL specific tables etc.
       gld_PreprocessLevel();

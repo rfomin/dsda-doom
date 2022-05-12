@@ -98,9 +98,13 @@
 #include "dsda/map_format.h"
 #include "dsda/mapinfo.h"
 #include "dsda/mobjinfo.h"
+#include "dsda/pause.h"
+#include "dsda/playback.h"
 #include "dsda/settings.h"
+#include "dsda/skip.h"
 #include "dsda/sndinfo.h"
 #include "dsda/time.h"
+#include "dsda/gl/render_scale.h"
 
 #include "heretic/mn_menu.h"
 #include "heretic/sb_bar.h"
@@ -192,7 +196,7 @@ void D_PostEvent(event_t *ev)
   dsda_InputTrackEvent(ev);
 
   // Allow only sensible keys during skipping
-  if (doSkip)
+  if (dsda_SkipMode())
   {
     if (dsda_InputActivated(dsda_input_quit))
     {
@@ -258,9 +262,23 @@ static void D_Wipe(void)
       tics = nowtime - wipestart;
     }
     while (!tics);
+
+    // elim - Enable render-to-texture for GL so "melt" is rendered at same resolution as the game scene
+    if (V_IsOpenGLMode())
+    {
+      dsda_GLLetterboxClear();
+      dsda_GLStartMeltRenderTexture();
+    }
+
     wipestart = nowtime;
     done = wipe_ScreenWipe(tics);
-    I_UpdateNoBlit();
+
+    // elim - Render texture to screen
+    if (V_IsOpenGLMode())
+    {
+      dsda_GLEndMeltRenderTexture();
+    }
+
     M_Drawer();                   // menu is drawn even on top of wipes
     I_FinishUpdate();             // page flip or blit buffer
   }
@@ -293,7 +311,7 @@ void D_Display (fixed_t frac)
   dboolean viewactive = false, isborder = false;
 
   // e6y
-  if (doSkip)
+  if (dsda_SkipMode())
   {
     if (HU_DrawDemoProgress(false))
       I_FinishUpdate();
@@ -308,7 +326,7 @@ void D_Display (fixed_t frac)
 #endif
   }
 
-  if (!doSkip || !dsda_InputActive(dsda_input_use))
+  if (!dsda_SkipMode() || !dsda_InputActive(dsda_input_use))
     if (nodrawers)                    // for comparative timing / profiling
       return;
 
@@ -319,6 +337,9 @@ void D_Display (fixed_t frac)
     R_ExecuteSetViewSize();
     oldgamestate = -1;            // force background redraw
   }
+
+  if (V_IsOpenGLMode() && !exclusive_fullscreen && !nodrawers)
+    dsda_GLLetterboxClear();
 
   // save the current screen if about to wipe
   if ((wipe = (gamestate != wipegamestate)))
@@ -350,7 +371,7 @@ void D_Display (fixed_t frac)
       break;
     }
   }
-  else if (gametic != basetic) { // In a level
+  else { // In a level
     dboolean redrawborderstuff;
 
     HU_Erase();
@@ -376,8 +397,20 @@ void D_Display (fixed_t frac)
       borderwillneedredraw = (borderwillneedredraw) ||
         (((automapmode & am_active) && !(automapmode & am_overlay)));
     }
-    if (redrawborderstuff || (V_IsOpenGLMode()))
+
+    if (redrawborderstuff || V_IsOpenGLMode()) {
+      // elim - Update viewport and scene offsets whenever the view is changed (user hits "-" or "+")
+      if (redrawborderstuff && V_IsOpenGLMode()) {
+        dsda_GLSetRenderViewportParams();
+      }
+
       R_DrawViewBorder();
+    }
+
+    // elim - If we go from visible status bar to invisible status bar, update affected viewport params
+    if (!isborder && isborderstate) {
+      dsda_GLUpdateStatusBarVisible();
+    }
 
     // e6y
     // Boom colormaps should be applied for everything in R_RenderPlayerView
@@ -391,8 +424,7 @@ void D_Display (fixed_t frac)
     R_ClearStats();
 
     // Now do the drawing
-    if (viewactive || map_always_updates)
-    {
+    if (viewactive || map_always_updates) {
       R_RenderPlayerView (&players[displayplayer]);
     }
 
@@ -432,7 +464,7 @@ void D_Display (fixed_t frac)
   oldgamestate = wipegamestate = gamestate;
 
   // draw pause pic
-  if (paused && (menuactive != mnact_full)) {
+  if (dsda_Paused() && (menuactive != mnact_full)) {
     if (hexen)
     {
       if (!netgame)
@@ -446,7 +478,7 @@ void D_Display (fixed_t frac)
     }
     else if (heretic)
       MN_DrawPause();
-    else
+    else if (!dsda_PauseMode(PAUSE_BUILDMODE))
       // Simplified the "logic" here and no need for x-coord caching - POPE
       V_DrawNamePatch(
         (320 - V_NamePatchWidth("M_PAUSE"))/2, 4, 0,
@@ -472,7 +504,7 @@ void D_Display (fixed_t frac)
 
   // e6y
   // Don't thrash cpu during pausing or if the window doesnt have focus
-  if (paused_camera || !window_focused) {
+  if (dsda_CameraPaused() || !window_focused) {
     I_uSleep(5000);
   }
 
@@ -533,7 +565,7 @@ static void D_DoomLoop(void)
     if (!movement_smooth || !WasRenderedInTryRunTics || gamestate != wipegamestate)
     {
       // NSM
-      if (capturing_video && !doSkip)
+      if (capturing_video && !dsda_SkipMode())
       {
         dboolean first = true;
         int cap_step = TICRATE * FRACUNIT / cap_fps;
@@ -562,7 +594,7 @@ static void D_DoomLoop(void)
     }
 
     //e6y
-    if (avi_shot_fname && !doSkip)
+    if (avi_shot_fname && !dsda_SkipMode())
     {
       int len;
       char *avi_shot_curr_fname;
@@ -747,7 +779,8 @@ const demostate_t doom_demostates[][4] =
 void D_DoAdvanceDemo(void)
 {
   players[consoleplayer].playerstate = PST_LIVE;  /* not reborn */
-  advancedemo = usergame = paused = false;
+  advancedemo = false;
+  dsda_ResetPauseMode();
   gameaction = ga_nothing;
 
   pagetic = TICRATE * 11;         /* killough 11/98: default behavior */
@@ -1943,24 +1976,9 @@ static void D_DoomMainSetup(void)
     }
   }
 
-  if (!(p = M_CheckParm("-playdemo")) || p >= myargc-1) {   /* killough */
-    if ((p = M_CheckParm ("-fastdemo")) && p < myargc-1)    /* killough */
-      fastdemo = true;             // run at fastest speed possible
-    else
-    {
-      if ((p = IsDemoContinue()))
-      {
-        democontinue = true;
-        AddDefaultExtension(strcpy(democontinuename, myargv[p + 2]), ".lmp");
-      }
-      else
-      {
-        p = M_CheckParm ("-timedemo");
-      }
-    }
-  }
+  p = dsda_ParsePlaybackOptions();
 
-  if (p && p < myargc-1)
+  if (p)
   {
     char *file = malloc(strlen(myargv[p+1])+4+1); // cph - localised
     strcpy(file,myargv[p+1]);
@@ -2158,7 +2176,7 @@ static void D_DoomMainSetup(void)
   HandleWarp();
 
   // Must be after HandleWarp
-  e6y_HandleSkip();
+  dsda_HandleSkip();
 
   //jff 9/3/98 use logical output routine
   lprintf(LO_INFO,"I_Init: Setting up machine state.\n");
@@ -2166,7 +2184,7 @@ static void D_DoomMainSetup(void)
 
   //jff 9/3/98 use logical output routine
   lprintf(LO_INFO,"S_Init: Setting up sound.\n");
-  S_Init(snd_SfxVolume /* *8 */, snd_MusicVolume /* *8*/ );
+  S_Init();
 
   //jff 9/3/98 use logical output routine
   lprintf(LO_INFO,"HU_Init: Setting up heads up display.\n");
@@ -2204,30 +2222,7 @@ static void D_DoomMainSetup(void)
     G_RecordDemo(myargv[p]);
   }
 
-  if ((p = M_CheckParm ("-fastdemo")) && ++p < myargc)
-  {                                 // killough
-    fastdemo = true;                // run at fastest speed possible
-    timingdemo = true;              // show stats after quit
-    G_DeferedPlayDemo(myargv[p]);
-    singledemo = true;              // quit after one demo
-  }
-  else if ((p = M_CheckParm("-timedemo")) && ++p < myargc)
-  {
-    singletics = true;
-    timingdemo = true;            // show stats after quit
-    G_DeferedPlayDemo(myargv[p]);
-    singledemo = true;            // quit after one demo
-  }
-  else if ((p = M_CheckParm("-playdemo")) && ++p < myargc)
-  {
-    G_DeferedPlayDemo(myargv[p]);
-    singledemo = true;          // quit after one demo
-  }
-  else if ((p = IsDemoContinue())) //e6y
-  {
-    G_DeferedPlayDemo(myargv[p+1]);
-    G_CheckDemoContinue();
-  }
+  dsda_ExecutePlaybackOptions();
 
   if (!singledemo)               // killough 12/98
   {

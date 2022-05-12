@@ -84,6 +84,7 @@
 #endif
 
 #include "dsda/settings.h"
+#include "dsda/stretch.h"
 
 // NSM
 #include "i_capture.h"
@@ -156,6 +157,7 @@ int M_ReadFile(char const *name, byte **buffer)
 //
 
 int usemouse;
+int mouse_stutter_correction;
 dboolean    precache = true; /* if true, load all graphics at start */
 
 // The available anisotropic
@@ -280,8 +282,6 @@ int         mus_pause_opt; // 0 = kill music, 1 = pause, 2 = continue
 
 extern const char* chat_macros[];
 
-extern int endoom_mode;
-
 /* cph - Some MBF stuff parked here for now
  * killough 10/98
  */
@@ -308,8 +308,6 @@ default_t defaults[] =
    def_int,ss_none}, // number of dead bodies in view supported (-1 = no limit)
   {"flashing_hom",{&flashing_hom},{0},0,1,
    def_bool,ss_none}, // killough 10/98 - enable flashing HOM indicator
-  {"endoom_mode", {&endoom_mode},{5},0,7, // CPhipps - endoom flags
-   def_hex, ss_none}, // 0, +1 for colours, +2 for non-ascii chars, +4 for skip-last-line
   {"level_precache",{(int*)&precache},{1},0,1,
    def_bool,ss_none}, // precache level data?
   {"demo_smoothturns", {&demo_smoothturns},  {0},0,1,
@@ -760,6 +758,59 @@ default_t defaults[] =
   { "input_notarget", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
     dsda_input_notarget, { 0, -1, -1 } },
 
+  { "input_build", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build, { 0, -1, -1 } },
+  { "input_build_advance_frame", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_advance_frame, { KEYD_RIGHTARROW, -1, -1 } },
+  { "input_build_reverse_frame", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_reverse_frame, { KEYD_LEFTARROW, -1, -1 } },
+  { "input_build_reset_command", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_reset_command, { KEYD_DEL, -1, -1 } },
+  { "input_build_source", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_source, { KEYD_RSHIFT, -1, -1 } },
+  { "input_build_forward", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_forward, { 'w', -1, -1 } },
+  { "input_build_backward", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_backward, { 's', -1, -1 } },
+  { "input_build_fine_forward", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_fine_forward, { 't', -1, -1 } },
+  { "input_build_fine_backward", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_fine_backward, { 'g', -1, -1 } },
+  { "input_build_turn_left", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_turn_left, { 'e', -1, -1 } },
+  { "input_build_turn_right", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_turn_right, { 'q', -1, -1 } },
+  { "input_build_strafe_left", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_strafe_left, { 'a', -1, -1 } },
+  { "input_build_strafe_right", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_strafe_right, { 'd', -1, -1 } },
+  { "input_build_fine_strafe_left", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_fine_strafe_left, { 'f', -1, -1 } },
+  { "input_build_fine_strafe_right", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_fine_strafe_right, { 'h', -1, -1 } },
+  { "input_build_use", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_use, { KEYD_SPACEBAR, -1, -1 } },
+  { "input_build_fire", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_fire, { KEYD_RCTRL, -1, -1 } },
+  { "input_build_weapon1", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_weapon1, { '1', -1, -1 } },
+  { "input_build_weapon2", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_weapon2, { '2', -1, -1 } },
+  { "input_build_weapon3", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_weapon3, { '3', -1, -1 } },
+  { "input_build_weapon4", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_weapon4, { '4', -1, -1 } },
+  { "input_build_weapon5", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_weapon5, { '5', -1, -1 } },
+  { "input_build_weapon6", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_weapon6, { '6', -1, -1 } },
+  { "input_build_weapon7", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_weapon7, { '7', -1, -1 } },
+  { "input_build_weapon8", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_weapon8, { '8', -1, -1 } },
+  { "input_build_weapon9", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
+    dsda_input_build_weapon9, { '9', -1, -1 } },
+
   { "input_jump", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
     dsda_input_jump, { 0, -1, -1 } },
   { "input_hexen_arti_incant", { NULL }, { 0 }, UL, UL, def_input, ss_keys, NULL, NULL,
@@ -782,6 +833,8 @@ default_t defaults[] =
   {"Mouse settings",{NULL},{0},UL,UL,def_none,ss_none},
   {"use_mouse",{&usemouse},{1},0,1,
    def_bool,ss_none}, // enables use of mouse with DOOM
+  {"mouse_stutter_correction",{&mouse_stutter_correction},{1},0,1,
+   def_bool,ss_none}, // interpolates mouse input to mitigate stuttering
   //jff 4/3/98 allow unlimited sensitivity
   {"mouse_sensitivity_horiz",{&mouseSensitivity_horiz},{10},0,UL,
    def_int,ss_none}, /* adjust horizontal (x) mouse sensitivity killough/mead */
@@ -993,7 +1046,6 @@ default_t defaults[] =
   { "speed_step", { &speed_step }, { 0 }, 0, 1000, def_int, ss_none },
 
   { "Prboom-plus misc settings", { NULL }, { 0 }, UL, UL, def_none, ss_none },
-  { "showendoom", { &showendoom }, { 0 }, 0, 1, def_bool, ss_stat },
   { "screenshot_dir", { NULL, &screenshot_dir }, { 0, "" }, UL, UL, def_str, ss_none },
   { "health_bar", { &health_bar }, { 0 }, 0, 1, def_bool, ss_stat },
   { "health_bar_full_length", { &health_bar_full_length }, { 1 }, 0, 1, def_bool, ss_stat },
@@ -1008,6 +1060,7 @@ default_t defaults[] =
   { "dsda_auto_key_frame_depth", { &dsda_auto_key_frame_depth }, { 60 }, 0, 600, def_int, ss_stat },
   { "dsda_auto_key_frame_timeout", { &dsda_auto_key_frame_timeout }, { 10 }, 0, 25, def_int, ss_stat },
   { "dsda_exhud", { (int *) &dsda_setting[dsda_exhud] }, { 0 }, 0, 1, def_bool, ss_stat },
+  { "dsda_ex_text_scale", { &dsda_ex_text_scale }, { 0 }, 0, 16, def_int, ss_stat },
   { "dsda_wipe_at_full_speed", { &dsda_wipe_at_full_speed }, { 1 }, 0, 1, def_bool, ss_stat },
   { "dsda_show_demo_attempts", { &dsda_show_demo_attempts }, { 1 }, 0, 1, def_bool, ss_stat },
   { "dsda_fine_sensitivity", { &dsda_fine_sensitivity }, { 0 }, 0, 99, def_int, ss_stat },
@@ -1063,7 +1116,7 @@ default_t defaults[] =
    def_bool,ss_stat},
   {"fake_contrast", {&fake_contrast},  {1},0,1,
    def_bool,ss_stat}, /* cph - allow crappy fake contrast to be disabled */
-  {"render_stretch_hud", {&render_stretch_hud_default},{patch_stretch_16x10},0,patch_stretch_max - 1,
+  {"render_stretch_hud", {&render_stretch_hud_default},{patch_stretch_not_adjusted},0,patch_stretch_max_config - 1,
   def_int,ss_stat},
   {"render_patches_scalex", {&render_patches_scalex},{0},0,16,
   def_int,ss_stat},

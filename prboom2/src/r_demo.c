@@ -64,34 +64,9 @@
 #include "hu_stuff.h"
 #include "g_overflow.h"
 #include "e6y.h"
+
 #include "dsda/demo.h"
-
-int IsDemoPlayback(void)
-{
-  int p;
-
-  if ((p = M_CheckParm("-playdemo")) && (p < myargc - 1))
-    return p;
-  if ((p = M_CheckParm("-timedemo")) && (p < myargc - 1))
-    return p;
-  if ((p = M_CheckParm("-fastdemo")) && (p < myargc - 1))
-    return p;
-
-  return 0;
-}
-
-int IsDemoContinue(void)
-{
-  int p;
-
-  if ((p = M_CheckParm("-recordfromto")) && (p < myargc - 2) &&
-    I_FindFile(myargv[p + 1], ".lmp"))
-  {
-    return p;
-  }
-
-  return 0;
-}
+#include "dsda/playback.h"
 
 int LoadDemo(const char *name, const byte **buffer, int *length, int *lump)
 {
@@ -165,7 +140,7 @@ static angle_t smooth_playing_angle;
 
 void R_SmoothPlaying_Reset(player_t *player)
 {
-  if (demo_smoothturns && demoplayback)
+  if (demo_smoothturns && demoplayback && !demorecording)
   {
     if (!player)
       player = &players[displayplayer];
@@ -185,7 +160,7 @@ void R_SmoothPlaying_Reset(player_t *player)
 
 void R_SmoothPlaying_Add(int delta)
 {
-  if (demo_smoothturns && demoplayback)
+  if (demo_smoothturns && demoplayback && !demorecording)
   {
     smooth_playing_sum -= smooth_playing_turns[smooth_playing_index];
     smooth_playing_turns[smooth_playing_index] = delta;
@@ -197,7 +172,7 @@ void R_SmoothPlaying_Add(int delta)
 
 angle_t R_SmoothPlaying_Get(player_t *player)
 {
-  if (demo_smoothturns && demoplayback && player == &players[displayplayer])
+  if (demo_smoothturns && demoplayback && !demorecording && player == &players[displayplayer])
     return smooth_playing_angle;
   else
     return player->mo->angle;
@@ -397,7 +372,7 @@ angle_t R_DemoEx_ReadMLook(void)
 {
   angle_t pitch;
 
-  if (!(demoplayback || democontinue))
+  if (!demoplayback)
     return 0;
 
   // mlook data must be initialised here
@@ -555,7 +530,7 @@ static void R_DemoEx_GetParams(const byte *pwad_p, waddata_t *waddata)
       }
     }
 
-    if (!M_CheckParm("-complevel"))
+    if (!M_CheckParm2("-complevel", "-cl"))
     {
       p = M_CheckParmEx("-complevel", params, paramscount);
       if (p >= 0 && p < (int)paramscount - 1)
@@ -1528,11 +1503,7 @@ int CheckDemoExDemo(void)
   int result = false;
   int p;
 
-  p = IsDemoPlayback();
-  if (!p)
-  {
-    p = IsDemoContinue();
-  }
+  p = dsda_PlaybackArg();
 
   if (p)
   {

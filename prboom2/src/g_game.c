@@ -85,7 +85,10 @@
 #include "r_demo.h"
 #include "r_fps.h"
 #include "e6y.h"//e6y
+
 #include "dsda.h"
+#include "dsda/brute_force.h"
+#include "dsda/build.h"
 #include "dsda/demo.h"
 #include "dsda/excmd.h"
 #include "dsda/key_frame.h"
@@ -96,6 +99,9 @@
 #include "dsda/mapinfo.h"
 #include "dsda/mouse.h"
 #include "dsda/options.h"
+#include "dsda/pause.h"
+#include "dsda/playback.h"
+#include "dsda/skip.h"
 #include "dsda/tas.h"
 #include "dsda/time.h"
 #include "dsda/split_tracker.h"
@@ -137,10 +143,6 @@ size_t          savegamesize = SAVEGAMESIZE; // killough
 static dboolean  netdemo;
 static const byte *demobuffer;   /* cph - only used for playback */
 static int demolength; // check for overrun (missing DEMOMARKER)
-//e6y static
-const byte *demo_p;
-const byte *demo_continue_p = NULL;
-static short    consistancy[MAX_MAXPLAYERS][BACKUPTICS];
 
 gameaction_t    gameaction;
 gamestate_t     gamestate;
@@ -148,12 +150,10 @@ skill_t         gameskill;
 dboolean         respawnmonsters;
 int             gameepisode;
 int             gamemap;
-dboolean         paused;
 // CPhipps - moved *_loadgame vars here
 static dboolean forced_loadgame = false;
 static dboolean load_via_cmd = false;
 
-dboolean         usergame;      // ok to save / end game
 dboolean         timingdemo;    // if true, exit with report on completion
 dboolean         fastdemo;      // if true, run at full speed -- killough
 dboolean         nodrawers;     // for comparative timing purposes
@@ -173,15 +173,12 @@ int             totalkills, totallive, totalitems, totalsecret;    // for interm
 int             show_alive;
 dboolean         demorecording;
 dboolean         demoplayback;
-dboolean         democontinue = false;
-char             democontinuename[PATH_MAX];
 dboolean         singledemo;           // quit after playing a demo from cmdline
 wbstartstruct_t wminfo;               // parms for world map / intermission
 dboolean         haswolflevels = false;// jff 4/18/98 wolf levels present
 byte            *savebuffer;
 int             totalleveltimes;      // CPhipps - total time for all completed levels
 int             longtics;
-int             bytes_per_tic;
 
 dboolean coop_spawns;
 
@@ -467,23 +464,21 @@ void G_BuildTiccmd(ticcmd_t* cmd)
   dsda_pclass_t *player_class = &pclass[players[consoleplayer].pclass];
 
   G_SetSpeed(false);
+  dsda_EvaluateSkipModeBuildTiccmd();
 
   memset(cmd, 0, sizeof(*cmd));
-  cmd->consistancy = consistancy[consoleplayer][maketic%BACKUPTICS];
+
+  if (demoplayback && demorecording)
+  {
+    mousex = mousey = 0;
+    return;
+  }
 
   strafe = dsda_InputActive(dsda_input_strafe);
   //e6y: the "RUN" key inverts the autorun state
   speed = (dsda_InputActive(dsda_input_speed) ? !dsda_AutoRun() : dsda_AutoRun()); // phares
 
   forward = side = 0;
-
-  G_SkipDemoCheck(); //e6y
-
-  if (democontinue)
-  {
-    mousex = mousey = 0;
-    return;
-  }
 
     // use two stage accelerative turning
     // on the keyboard and joystick
@@ -1124,7 +1119,7 @@ static void G_DoLoadLevel (void)
       const char message[] = "The -pistolstart option is not supported"
                              " for demos and\n"
                              " network play.";
-      if (!demo_p) demorecording = false;
+      demorecording = false;
       I_Error(message);
     }
   }
@@ -1148,8 +1143,12 @@ static void G_DoLoadLevel (void)
   joyxmove = joyymove = 0;
   mousex = mousey = 0;
   mlooky = 0;//e6y
-  special_event = 0; paused = false;
+  special_event = 0;
+  dsda_ResetPauseMode();
   dsda_ResetExCmdQueue();
+
+  if (dsda_BuildMode() || M_CheckParm("-build"))
+    dsda_EnterBuildMode();
 
   // killough 5/13/98: in case netdemo has consoleplayer other than green
   ST_Start();
@@ -1218,7 +1217,8 @@ dboolean G_Responder (event_t* ev)
     // killough 9/29/98: allow user to pause demos during playback
     if (dsda_InputActivated(dsda_input_pause))
     {
-      if (paused ^= PAUSE_PLAYBACK)
+      dsda_TogglePauseMode(PAUSE_PLAYBACK);
+      if (dsda_Paused())
         S_PauseSound();
       else
         S_ResumeSound();
@@ -1248,6 +1248,9 @@ dboolean G_Responder (event_t* ev)
   {
     return InventoryMoveRight();
   }
+
+  if (dsda_BuildResponder(ev))
+    return true;
 
   if (dsda_InputActivated(dsda_input_pause))
   {
@@ -1305,6 +1308,8 @@ dboolean G_Responder (event_t* ev)
 void G_Ticker (void)
 {
   int i;
+  int pause_mask;
+  dboolean advance_frame = false;
   static gamestate_t prevgamestate;
 
   // CPhipps - player colour changing
@@ -1362,13 +1367,26 @@ void G_Ticker (void)
     }
   }
 
-  if (paused_outside_demo)
+  dsda_EvaluateSkipModeGTicker();
+
+  if (dsda_AdvanceFrame())
+  {
+    advance_frame = true;
+    pause_mask = dsda_MaskPause();
+  }
+
+  if (dsda_PausedOutsideDemo())
     basetic++;  // For revenant tracers and RNG -- we must maintain sync
   else {
-    // get commands, check consistancy, and build new consistancy check
     int buf = (gametic / ticdup) % BACKUPTICS;
 
     dsda_UpdateAutoKeyFrames();
+
+    if (dsda_BruteForce())
+    {
+      dsda_UpdateBruteForce();
+      dsda_RemovePauseMode(PAUSE_BUILDMODE);
+    }
 
     for (i = 0; i < g_maxplayers; i++)
     {
@@ -1378,29 +1396,17 @@ void G_Ticker (void)
 
         memcpy(cmd, &netcmds[i][buf], sizeof *cmd);
 
+        if (dsda_BuildMode())
+          dsda_ReadBuildCmd(cmd);
+
         if (dsda_KeyFrameRestored())
           dsda_JoinDemoCmd(cmd);
 
-        //e6y
-        if (democontinue)
-          G_ReadDemoContinueTiccmd(cmd);
-
         if (demoplayback)
-          G_ReadDemoTiccmd(cmd);
+          dsda_TryPlaybackOneTick(cmd);
+
         if (demorecording)
           G_WriteDemoTiccmd(cmd);
-
-        if (netgame && !netdemo && !(gametic % ticdup) )
-        {
-          if (gametic > BACKUPTICS
-              && consistancy[i][buf] != cmd->consistancy)
-            I_Error("G_Ticker: Consistency failure (%i should be %i)",
-                    cmd->consistancy, consistancy[i][buf]);
-          if (players[i].mo)
-            consistancy[i][buf] = players[i].mo->x;
-          else
-            consistancy[i][buf] = 0; // killough 2/14/98
-        }
       }
     }
 
@@ -1417,8 +1423,8 @@ void G_Ticker (void)
           switch (players[i].cmd.buttons & BT_SPECIALMASK)
           {
             case BT_PAUSE:
-              paused ^= PAUSE_COMMAND;
-              if (paused)
+              dsda_TogglePauseMode(PAUSE_COMMAND);
+              if (dsda_Paused())
                 S_PauseSound();
               else
                 S_ResumeSound();
@@ -1486,7 +1492,7 @@ void G_Ticker (void)
   // e6y
   // do nothing if a pause has been pressed during playback
   // pausing during intermission can cause desynchs without that
-  if (paused_outside_demo && gamestate != GS_LEVEL)
+  if (dsda_PausedOutsideDemo() && gamestate != GS_LEVEL)
     return;
 
   // do main actions
@@ -1513,6 +1519,9 @@ void G_Ticker (void)
       D_PageTicker();
       break;
   }
+
+  if (advance_frame)
+    dsda_UnmaskPause(pause_mask);
 }
 
 //
@@ -2035,7 +2044,7 @@ void G_DoWorldDone (void)
   G_DoLoadLevel();
   gameaction = ga_nothing;
   AM_clearMarks();           //jff 4/12/98 clear any marks on the automap
-  e6y_G_DoWorldDone();//e6y
+  dsda_EvaluateSkipModeDoWorldDone();
 }
 
 extern dboolean setsizeneeded;
@@ -2491,11 +2500,11 @@ static void G_DoSaveGame(dboolean via_cmd)
   save_p += sizeof totalleveltimes;
 
   // killough 11/98: save revenant tracer state
-  *save_p++ = (gametic-basetic) & 255;
+  *save_p++ = logictic & 255;
 
   dsda_ArchiveAll();
 
-  *save_p++ = 0xe6;   // consistancy marker
+  *save_p++ = 0xe6;   // consistency marker
 
   doom_printf( "%s", M_WriteFile(name, savebuffer, save_p - savebuffer)
          ? s_GGSAVED /* Ty - externalised */
@@ -2657,6 +2666,8 @@ void G_Compatibility(void)
 // killough 3/1/98: function to reload all the default parameter
 // settings before a new game begins
 
+static int compatibility_level_unspecified;
+
 void G_ReloadDefaults(void)
 {
   const dsda_options_t* options;
@@ -2667,6 +2678,8 @@ void G_ReloadDefaults(void)
     l = dsda_CompatibilityLevel();
     if (l != UNSPECIFIED_COMPLEVEL)
       compatibility_level = l;
+    else
+      compatibility_level_unspecified = true;
   }
   if (compatibility_level == -1)
     compatibility_level = best_compatibility;
@@ -2891,9 +2904,9 @@ void G_InitNew(skill_t skill, int episode, int map, dboolean prepare)
   if (prepare)
     dsda_PrepareInitNew();
 
-  if (paused)
+  if (dsda_Paused())
   {
-    paused = false;
+    dsda_ResetPauseMode();
     S_ResumeSound();
   }
 
@@ -2985,15 +2998,14 @@ void G_InitNew(skill_t skill, int episode, int map, dboolean prepare)
     players[i].worldTimer = 0;
   }
 
-  usergame = true;                // will be set false if a demo
-  paused = false;
+  dsda_ResetPauseMode();
   automapmode &= ~am_active;
   gameskill = skill;
   dsda_UpdateGameMap(episode, map);
 
   totalleveltimes = 0; // cph
 
-  G_SkipDemoStartCheck();
+  dsda_EvaluateSkipModeInitNew();
 
   //jff 4/16/98 force marks on automap cleared every new level start
   AM_clearMarks();
@@ -3047,25 +3059,6 @@ void G_ReadOneTick(ticcmd_t* cmd, const byte **data_p)
   dsda_ReadExCmd(cmd, data_p);
 }
 
-void G_ReadDemoTiccmd (ticcmd_t* cmd)
-{
-  demo_curr_tic++;
-
-  if (*demo_p == DEMOMARKER)
-  {
-    G_CheckDemoStatus();      // end of demo data stream
-  }
-  else if (demoplayback && demo_p + bytes_per_tic > demobuffer + demolength)
-  {
-    lprintf(LO_WARN, "G_ReadDemoTiccmd: missing DEMOMARKER\n");
-    G_CheckDemoStatus();
-  }
-  else
-  {
-    G_ReadOneTick(cmd, &demo_p);
-  }
-}
-
 /* Demo limits removed -- killough
  * cph - record straight to file
  */
@@ -3105,9 +3098,8 @@ void G_WriteDemoTiccmd (ticcmd_t* cmd)
 
   dsda_WriteToDemo(buf, p - buf);
 
-  /* cph - alias demo_p to it so we can read it back */
-  demo_p = buf;
-  G_ReadDemoTiccmd (cmd);         // make SURE it is exactly the same
+  p = buf; // make SURE it is exactly the same
+  G_ReadOneTick(cmd, (const byte **) &p);
 }
 
 //
@@ -3117,7 +3109,11 @@ void G_WriteDemoTiccmd (ticcmd_t* cmd)
 void G_RecordDemo (const char* name)
 {
   char *demoname;
-  usergame = false;
+
+  if (compatibility_level_unspecified)
+    I_Error("You must specify a compatibility level when recording a demo!\n"
+            "Example: dsda-doom -iwad DOOM -complevel 3 -record demo");
+
   demoname = malloc(strlen(name)+4+1);
   AddDefaultExtension(strcpy(demoname, name), ".lmp");  // 1/18/98 killough
   demorecording = true;
@@ -3483,6 +3479,8 @@ void G_BeginRecording (void)
       }
     }
   }
+
+  dsda_EvaluateBytesPerTic();
 
   dsda_WriteToDemo(demostart, demo_p - demostart);
   dsda_ContinueKeyFrame();
@@ -3860,12 +3858,10 @@ const byte* G_ReadDemoHeaderEx(const byte *demo_p, size_t size, unsigned int par
   {
     const byte *p = demo_p;
 
-    bytes_per_tic = (longtics ? 5 : 4);
-    if (raven) bytes_per_tic += 2;
-    if (dsda_ExCmdDemo()) bytes_per_tic++;
+    dsda_EvaluateBytesPerTic();
+
     demo_playerscount = 0;
     demo_tics_count = 0;
-    demo_curr_tic = 0;
     strcpy(demo_len_st, "-");
 
     for (i = 0; i < g_maxplayers; i++)
@@ -3891,14 +3887,15 @@ const byte* G_ReadDemoHeaderEx(const byte *demo_p, size_t size, unsigned int par
 
 void G_DoPlayDemo(void)
 {
+  const byte *demo_p;
+
   if (LoadDemo(defdemoname, &demobuffer, &demolength, &demolumpnum))
   {
     demo_p = G_ReadDemoHeaderEx(demobuffer, demolength, RDH_SAFE);
+    dsda_AttachPlaybackStream(demo_p, demolength, 0);
 
     gameaction = ga_nothing;
-    usergame = false;
 
-    demoplayback = true;
     R_SmoothPlaying_Reset(NULL); // e6y
   }
   else
@@ -3911,7 +3908,6 @@ void G_DoPlayDemo(void)
     // Plutonia/Tnt executables exit with "W_GetNumForName: DEMO4 not found"
     // message after playing of DEMO3, because DEMO4 is not present
     // in the corresponding IWADs.
-    usergame = false;
     D_StartTitle();                // Start the title screen
     gamestate = GS_DEMOSCREEN;     // And set the game state accordingly
   }
@@ -3924,9 +3920,7 @@ void G_DoPlayDemo(void)
  */
 dboolean G_CheckDemoStatus (void)
 {
-  //e6y
-  if (doSkip && (demo_stoponend || demo_stoponnext))
-    G_SkipDemoStop();
+  dsda_EvaluateSkipModeCheckDemoStatus();
 
   if (demorecording)
   {
@@ -4146,44 +4140,20 @@ void P_SyncWalkcam(dboolean sync_coords, dboolean sync_sight)
   }
 }
 
-void G_ReadDemoContinueTiccmd (ticcmd_t* cmd)
-{
-  if (!demo_continue_p)
-    return;
-
-  if (gametic <= demo_tics_count &&
-    demo_continue_p + bytes_per_tic <= demobuffer + demolength &&
-    *demo_continue_p != DEMOMARKER)
-  {
-    G_ReadOneTick(cmd, &demo_continue_p);
-  }
-
-  if (gametic >= demo_tics_count ||
-    demo_continue_p > demobuffer + demolength ||
-    dsda_InputActive(dsda_input_join_demo) || dsda_InputJoyBActive(dsda_input_use))
-  {
-    demo_continue_p = NULL;
-    democontinue = false;
-
-    dsda_JoinDemoCmd(cmd);
-  }
-}
-
 //e6y
-void G_CheckDemoContinue(void)
+void G_ContinueDemo(const char *playback_name, const char *record_name)
 {
-  if (democontinue)
-  {
-    if (LoadDemo(defdemoname, &demobuffer, &demolength, &demolumpnum))
-    {
-      demo_continue_p = G_ReadDemoHeaderEx(demobuffer, demolength, RDH_SAFE);
+  const byte *demo_p;
 
-      singledemo = true;
-      autostart = true;
-      G_RecordDemo(democontinuename);
-      G_BeginRecording();
-      usergame = true;
-    }
+  if (LoadDemo(playback_name, &demobuffer, &demolength, &demolumpnum))
+  {
+    demo_p = G_ReadDemoHeaderEx(demobuffer, demolength, RDH_SAFE);
+    dsda_AttachPlaybackStream(demo_p, demolength, PLAYBACK_JOIN_ON_END);
+
+    singledemo = true;
+    autostart = true;
+    G_RecordDemo(record_name);
+    G_BeginRecording();
   }
 }
 
@@ -4271,7 +4241,7 @@ void G_DoTeleportNewMap(void)
     gamestate = GS_LEVEL;
     gameaction = ga_nothing;
     RebornPosition = LeavePosition;
-    e6y_G_DoTeleportNewMap();
+    dsda_EvaluateSkipModeDoTeleportNewMap();
 }
 
 void G_PlayerExitMap(int playerNumber)
