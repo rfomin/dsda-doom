@@ -89,6 +89,7 @@
 #include "dsda.h"
 #include "dsda/brute_force.h"
 #include "dsda/build.h"
+#include "dsda/command_display.h"
 #include "dsda/demo.h"
 #include "dsda/excmd.h"
 #include "dsda/key_frame.h"
@@ -485,7 +486,7 @@ void G_BuildTiccmd(ticcmd_t* cmd)
   if (joyxmove != 0 ||
       dsda_InputActive(dsda_input_turnright) ||
       dsda_InputActive(dsda_input_turnleft))
-    turnheld += ticdup;
+    ++turnheld;
   else
     turnheld = 0;
 
@@ -550,7 +551,7 @@ void G_BuildTiccmd(ticcmd_t* cmd)
 
     if (dsda_InputActive(dsda_input_lookdown) || dsda_InputActive(dsda_input_lookup))
     {
-      lookheld += ticdup;
+      ++lookheld;
     }
     else
     {
@@ -914,7 +915,7 @@ void G_BuildTiccmd(ticcmd_t* cmd)
         dclicktime = 0;
     }
     else
-      if ((dclicktime += ticdup) > 20)
+      if (++dclicktime > 20)
       {
         dclicks = 0;
         dclickstate = 0;
@@ -936,7 +937,7 @@ void G_BuildTiccmd(ticcmd_t* cmd)
         dclicktime2 = 0;
     }
     else
-      if ((dclicktime2 += ticdup) > 20)
+      if (++dclicktime2 > 20)
       {
         dclicks2 = 0;
         dclickstate2 = 0;
@@ -1369,6 +1370,9 @@ void G_Ticker (void)
 
   dsda_EvaluateSkipModeGTicker();
 
+  if (dsda_BruteForce())
+    dsda_EvaluateBruteForce();
+
   if (dsda_AdvanceFrame())
   {
     advance_frame = true;
@@ -1378,7 +1382,7 @@ void G_Ticker (void)
   if (dsda_PausedOutsideDemo())
     basetic++;  // For revenant tracers and RNG -- we must maintain sync
   else {
-    int buf = (gametic / ticdup) % BACKUPTICS;
+    int buf = gametic % BACKUPTICS;
 
     dsda_UpdateAutoKeyFrames();
 
@@ -1394,7 +1398,7 @@ void G_Ticker (void)
       {
         ticcmd_t *cmd = &players[i].cmd;
 
-        memcpy(cmd, &netcmds[i][buf], sizeof *cmd);
+        memcpy(cmd, &local_cmds[i][buf], sizeof *cmd);
 
         if (dsda_BuildMode())
           dsda_ReadBuildCmd(cmd);
@@ -2666,8 +2670,6 @@ void G_Compatibility(void)
 // killough 3/1/98: function to reload all the default parameter
 // settings before a new game begins
 
-static int compatibility_level_unspecified;
-
 void G_ReloadDefaults(void)
 {
   const dsda_options_t* options;
@@ -2679,7 +2681,7 @@ void G_ReloadDefaults(void)
     if (l != UNSPECIFIED_COMPLEVEL)
       compatibility_level = l;
     else
-      compatibility_level_unspecified = true;
+      dsda_MarkCompatibilityLevelUnspecified();
   }
   if (compatibility_level == -1)
     compatibility_level = best_compatibility;
@@ -2999,6 +3001,7 @@ void G_InitNew(skill_t skill, int episode, int map, dboolean prepare)
   }
 
   dsda_ResetPauseMode();
+  dsda_ResetCommandHistory();
   automapmode &= ~am_active;
   gameskill = skill;
   dsda_UpdateGameMap(episode, map);
@@ -3096,40 +3099,10 @@ void G_WriteDemoTiccmd (ticcmd_t* cmd)
 
   dsda_WriteExCmd(&p, cmd);
 
-  dsda_WriteToDemo(buf, p - buf);
+  dsda_WriteTicToDemo(buf, p - buf);
 
   p = buf; // make SURE it is exactly the same
   G_ReadOneTick(cmd, (const byte **) &p);
-}
-
-//
-// G_RecordDemo
-//
-
-void G_RecordDemo (const char* name)
-{
-  char *demoname;
-
-  if (compatibility_level_unspecified)
-    I_Error("You must specify a compatibility level when recording a demo!\n"
-            "Example: dsda-doom -iwad DOOM -complevel 3 -record demo");
-
-  demoname = malloc(strlen(name)+4+1);
-  AddDefaultExtension(strcpy(demoname, name), ".lmp");  // 1/18/98 killough
-  demorecording = true;
-
-  dsda_WatchRecordDemo(demoname);
-
-  if (!access(demoname, F_OK) && !demo_overwriteexisting)
-  {
-    free(demoname);
-    demoname = dsda_NewDemoName();
-  }
-
-  // dsda - TODO: abstracting file handling, but should refactor around here
-  dsda_InitDemo(demoname);
-
-  free(demoname);
 }
 
 // These functions are used to read and write game-specific options in demos
@@ -3885,18 +3858,23 @@ const byte* G_ReadDemoHeaderEx(const byte *demo_p, size_t size, unsigned int par
   return demo_p;
 }
 
-void G_DoPlayDemo(void)
+void G_StartDemoPlayback(const byte *buffer, int length, int behaviour)
 {
   const byte *demo_p;
 
+  demo_p = G_ReadDemoHeaderEx(demobuffer, demolength, RDH_SAFE);
+  dsda_AttachPlaybackStream(demo_p, demolength, behaviour);
+
+  R_SmoothPlaying_Reset(NULL); // e6y
+}
+
+void G_DoPlayDemo(void)
+{
   if (LoadDemo(defdemoname, &demobuffer, &demolength, &demolumpnum))
   {
-    demo_p = G_ReadDemoHeaderEx(demobuffer, demolength, RDH_SAFE);
-    dsda_AttachPlaybackStream(demo_p, demolength, 0);
+    G_StartDemoPlayback(demobuffer, demolength, PLAYBACK_NORMAL);
 
     gameaction = ga_nothing;
-
-    R_SmoothPlaying_Reset(NULL); // e6y
   }
   else
   {
@@ -4009,7 +3987,7 @@ void P_WalkTicker()
   if (joyxmove != 0 ||
       dsda_InputActive(dsda_input_turnright) ||
       dsda_InputActive(dsda_input_turnleft))
-    turnheld += ticdup;
+    ++turnheld;
   else
     turnheld = 0;
 
@@ -4141,18 +4119,17 @@ void P_SyncWalkcam(dboolean sync_coords, dboolean sync_sight)
 }
 
 //e6y
-void G_ContinueDemo(const char *playback_name, const char *record_name)
+void G_ContinueDemo(const char *playback_name)
 {
   const byte *demo_p;
 
   if (LoadDemo(playback_name, &demobuffer, &demolength, &demolumpnum))
   {
-    demo_p = G_ReadDemoHeaderEx(demobuffer, demolength, RDH_SAFE);
-    dsda_AttachPlaybackStream(demo_p, demolength, PLAYBACK_JOIN_ON_END);
+    G_StartDemoPlayback(demobuffer, demolength, PLAYBACK_JOIN_ON_END);
 
     singledemo = true;
     autostart = true;
-    G_RecordDemo(record_name);
+    dsda_InitDemoRecording();
     G_BeginRecording();
   }
 }

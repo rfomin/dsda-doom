@@ -23,6 +23,7 @@
 #include "lprintf.h"
 #include "m_random.h"
 
+#include "dsda/build.h"
 #include "dsda/key_frame.h"
 #include "dsda/skip.h"
 #include "dsda/time.h"
@@ -72,6 +73,7 @@ static long long bf_volume;
 static long long bf_volume_max;
 static dboolean bf_mode;
 static bf_target_t bf_target;
+static ticcmd_t bf_result[MAX_BF_DEPTH];
 
 const char* dsda_bf_attribute_names[dsda_bf_attribute_max] = {
   [dsda_bf_x] = "x",
@@ -133,13 +135,30 @@ static dboolean dsda_AdvanceBruteForceFrame(int frame) {
 static int dsda_AdvanceBruteForce(void) {
   int i;
 
-  ++bf_volume;
-
   for (i = bf_depth - 1; i >= 0; --i)
     if (dsda_AdvanceBruteForceFrame(i))
       break;
 
   return i;
+}
+
+
+static void dsda_CopyBFCommandDepth(ticcmd_t* cmd, bf_t* bf) {
+  memset(cmd, 0, sizeof(*cmd));
+
+  cmd->angleturn = bf->angleturn.i << 8;
+  cmd->forwardmove = bf->forwardmove.i;
+  cmd->sidemove = bf->sidemove.i;
+}
+
+static void dsda_CopyBFResult(bf_t* bf, int depth) {
+  int i;
+
+  for (i = 0; i < depth; ++i)
+    dsda_CopyBFCommandDepth(&bf_result[i], &bf[i]);
+
+  if (i != MAX_BF_DEPTH)
+    memset(&bf_result[i], 0, sizeof(ticcmd_t) * (MAX_BF_DEPTH - i));
 }
 
 static void dsda_RestoreBFKeyFrame(int frame) {
@@ -174,12 +193,14 @@ static void dsda_EndBF(int result) {
   lprintf(LO_INFO, "Brute force complete (%s)!\n", bf_result_text[result]);
   dsda_PrintBFProgress();
 
-  if (result == BF_FAILURE)
-    dsda_RestoreBFKeyFrame(0);
+  dsda_RestoreBFKeyFrame(0);
 
   bf_mode = false;
 
-  dsda_ExitSkipMode();
+  if (result == BF_SUCCESS)
+    dsda_QueueBuildCommands(bf_result, bf_depth);
+  else
+    dsda_ExitSkipMode();
 }
 
 static fixed_t dsda_BFAttribute(int attribute) {
@@ -239,6 +260,7 @@ static dboolean dsda_BFConditionReached(int i) {
 static void dsda_BFUpdateBestResult(fixed_t value) {
   int i;
   char str[FIXED_STRING_LENGTH];
+  char cmd_str[COMMAND_MOVEMENT_STRING_LENGTH];
 
   bf_target.evaluated = true;
   bf_target.best_value = value;
@@ -247,15 +269,27 @@ static void dsda_BFUpdateBestResult(fixed_t value) {
   for (i = 0; i < bf_target.best_depth; ++i)
     bf_target.best_bf[i] = brute_force[i];
 
+  dsda_CopyBFResult(bf_target.best_bf, bf_target.best_depth);
+
   if (fixed_point_attribute[bf_target.attribute])
     dsda_FixedToString(str, value);
   else
     snprintf(str, FIXED_STRING_LENGTH, "%i", value);
 
   lprintf(LO_INFO, "New best: %s = %s\n", dsda_bf_attribute_names[bf_target.attribute], str);
+
+  for (i = 0; i < bf_target.best_depth; ++i) {
+    dsda_PrintCommandMovement(cmd_str, &bf_result[i]);
+    lprintf(LO_INFO, "    %s\n", cmd_str);
+  }
+
+  lprintf(LO_INFO, "\n");
 }
 
 static dboolean dsda_BFNewBestResult(fixed_t value) {
+  if (!bf_target.evaluated)
+    return true;
+
   switch (bf_target.limit) {
     case dsda_bf_acap:
       return abs(value - bf_target.value) < abs(bf_target.best_value - bf_target.value);
@@ -381,12 +415,6 @@ dboolean dsda_StartBruteForce(int depth,
 void dsda_UpdateBruteForce(void) {
   int frame;
 
-  if (dsda_BFConditionsReached()) {
-    dsda_EndBF(BF_SUCCESS);
-
-    return;
-  }
-
   frame = logictic - bf_logictic;
 
   if (frame == bf_depth) {
@@ -397,24 +425,39 @@ void dsda_UpdateBruteForce(void) {
 
     if (frame >= 0)
       dsda_RestoreBFKeyFrame(frame);
-    else
-      dsda_EndBF(BF_FAILURE);
   }
   else
     dsda_StoreBFKeyFrame(frame);
 }
 
-void dsda_PopBruteForceCommand(ticcmd_t* cmd) {
-  bf_t* bf;
-
-  memset(cmd, 0, sizeof(*cmd));
-
-  if (logictic - bf_logictic >= bf_depth)
+void dsda_EvaluateBruteForce(void) {
+  if (logictic - bf_logictic != bf_depth)
     return;
 
-  bf = &brute_force[logictic - bf_logictic];
+  ++bf_volume;
 
-  cmd->angleturn = bf->angleturn.i << 8;
-  cmd->forwardmove = bf->forwardmove.i;
-  cmd->sidemove = bf->sidemove.i;
+  if (dsda_BFConditionsReached()) {
+    dsda_CopyBFResult(brute_force, bf_depth);
+    dsda_EndBF(BF_SUCCESS);
+  }
+  else if (bf_volume >= bf_volume_max) {
+    if (bf_target.enabled && bf_target.evaluated)
+      dsda_EndBF(BF_SUCCESS);
+    else
+      dsda_EndBF(BF_FAILURE);
+  }
+}
+
+void dsda_CopyBruteForceCommand(ticcmd_t* cmd) {
+  int depth;
+
+  depth = logictic - bf_logictic;
+
+  if (depth >= bf_depth) {
+    memset(cmd, 0, sizeof(*cmd));
+
+    return;
+  }
+
+  dsda_CopyBFCommandDepth(cmd, &brute_force[depth]);
 }

@@ -53,8 +53,6 @@ void G_ForcedLoadGame(void);           // killough 5/15/98: forced loadgames
 void G_DoLoadGame(void);
 void G_SaveGame(int slot, const char *description); // Called by M_Responder.
 void G_BeginRecording(void);
-// CPhipps - const on these string params
-void G_RecordDemo(const char *name);          // Only called by startup code.
 void G_ExitLevel(void);
 void G_SecretExitLevel(void);
 void G_WorldDone(void);
@@ -65,6 +63,7 @@ void G_ReloadDefaults(void);     // killough 3/1/98: loads game defaults
 void G_SetFastParms(int);        // killough 4/10/98: sets -fast parameters
 void G_DoNewGame(void);
 void G_DoReborn(int playernum);
+void G_StartDemoPlayback(const byte *buffer, int length, int behaviour);
 void G_DoPlayDemo(void);
 void G_DoCompleted(void);
 void G_WriteDemoTiccmd(ticcmd_t *cmd);
@@ -81,7 +80,7 @@ void G_MakeSpecialEvent(buttoncode_t bc, ...); /* cph - new event stuff */
 int G_ValidateMapName(const char *mapname, int *pEpi, int *pMap);
 
 //e6y
-void G_ContinueDemo(const char *playback_name, const char *record_name);
+void G_ContinueDemo(const char *playback_name);
 void G_SetSpeed(dboolean force);
 
 //e6y

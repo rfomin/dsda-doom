@@ -947,10 +947,10 @@ typedef struct cheat_input_s {
 } cheat_input_t;
 
 static cheat_input_t cheat_input[] = {
-  { dsda_input_iddqd, cht_never, cheat_god, 0 },
+  { dsda_input_iddqd, cht_dsda, cheat_god, 0 },
   { dsda_input_idkfa, cht_never, cheat_kfa, 0 },
   { dsda_input_idfa, cht_never, cheat_fa, 0 },
-  { dsda_input_idclip, cht_never, cheat_noclip, 0 },
+  { dsda_input_idclip, cht_dsda, cheat_noclip, 0 },
   { dsda_input_idbeholdh, cht_never, cheat_health, 0 },
   { dsda_input_idbeholdm, cht_never, cheat_megaarmour, 0 },
   { dsda_input_idbeholdv, cht_never, cheat_pw, pw_invulnerability },
@@ -1006,7 +1006,7 @@ dboolean M_CheatEntered(const char* element, const char* value)
   for (cheat_i = cheat; cheat_i->cheat; cheat_i++)
   {
     if (!strcmp(cheat_i->cheat, element) && M_CheatAllowed(cheat_i->when))
-    {    
+    {
       if (cheat_i->arg >= 0)
         cheat_i->func(cheat_i->arg);
       else

@@ -92,6 +92,7 @@
 #include "e6y_launcher.h"
 #endif
 
+#include "dsda/demo.h"
 #include "dsda/global.h"
 #include "dsda/save.h"
 #include "dsda/data_organizer.h"
@@ -149,7 +150,6 @@ int     startepisode;
 int     startmap;
 dboolean autostart;
 FILE    *debugfile;
-int ffmap;
 
 dboolean advancedemo;
 
@@ -540,13 +540,11 @@ static void D_DoomLoop(void)
     // frame syncronous IO operations
     I_StartFrame ();
 
-    if (ffmap == gamemap) ffmap = 0;
-
     // process one or more tics
     if (singletics)
     {
       I_StartTic ();
-      G_BuildTiccmd (&netcmds[consoleplayer][maketic%BACKUPTICS]);
+      G_BuildTiccmd (&local_cmds[consoleplayer][maketic%BACKUPTICS]);
       if (advancedemo)
         D_DoAdvanceDemo ();
       M_Ticker ();
@@ -1986,9 +1984,6 @@ static void D_DoomMainSetup(void)
     D_AddFile (file,source_lmp);
     //jff 9/3/98 use logical output routine
     lprintf(LO_INFO,"Playing demo %s\n",file);
-    if ((p = M_CheckParm ("-ffmap")) && p < myargc-1) {
-      ffmap = atoi(myargv[p+1]);
-    }
     free(file);
   }
 
@@ -2219,7 +2214,8 @@ static void D_DoomMainSetup(void)
   if ((p = M_CheckParm("-record")) && ++p < myargc)
   {
     autostart = true;
-    G_RecordDemo(myargv[p]);
+    dsda_SetDemoBaseName(myargv[p]);
+    dsda_InitDemoRecording();
   }
 
   dsda_ExecutePlaybackOptions();

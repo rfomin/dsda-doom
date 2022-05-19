@@ -135,7 +135,6 @@ int render_multisampling;
 int render_paperitems;
 int render_wipescreen;
 int mouse_acceleration;
-int demo_overwriteexisting;
 int quickstart_window_ms;
 
 int palette_ondamage;
@@ -285,6 +284,12 @@ int G_ReloadLevel(void)
       !menuactive)
   {
     G_DeferedInitNew(gameskill, gameepisode, gamemap);
+    result = true;
+  }
+
+  if (demoplayback)
+  {
+    dsda_RestartPlayback();
     result = true;
   }
 

@@ -36,16 +36,22 @@ static int playback_tics;
 
 static int playdemo_arg, fastdemo_arg, timedemo_arg, recordfromto_arg;
 
-static char recordfromto_dest[PATH_MAX];
+void dsda_RestartPlayback(void) {
+  G_StartDemoPlayback(playback_origin_p, playback_length, playback_behaviour);
+}
 
 dboolean dsda_JumpToLogicTic(int tic) {
+  if (tic < 0)
+    return false;
+
   if (tic > logictic)
     dsda_SkipToLogicTic(tic);
   else if (tic < logictic) {
     if (!dsda_RestoreClosestKeyFrame(tic))
       return false;
 
-    dsda_SkipToLogicTic(tic);
+    if (tic != logictic)
+      dsda_SkipToLogicTic(tic);
   }
 
   return true;
@@ -87,7 +93,7 @@ void dsda_ExecutePlaybackOptions(void) {
     singledemo = true;
   }
   else if (recordfromto_arg) {
-    G_ContinueDemo(myargv[recordfromto_arg + 1], recordfromto_dest);
+    G_ContinueDemo(myargv[recordfromto_arg + 1]);
   }
 }
 
@@ -116,7 +122,7 @@ int dsda_ParsePlaybackOptions(void) {
   p = M_CheckParm("-recordfromto");
   if (p && p < myargc - 2 && I_FindFile(myargv[p + 1], ".lmp")) {
     recordfromto_arg = p;
-    AddDefaultExtension(strcpy(recordfromto_dest, myargv[p + 2]), ".lmp");
+    dsda_SetDemoBaseName(myargv[p + 2]);
     return p;
   }
 

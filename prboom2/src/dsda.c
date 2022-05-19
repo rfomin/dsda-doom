@@ -15,6 +15,7 @@
 //	DSDA Tools
 //
 
+#include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -28,6 +29,7 @@
 #include "am_map.h"
 
 #include "dsda/analysis.h"
+#include "dsda/demo.h"
 #include "dsda/exhud.h"
 #include "dsda/ghost.h"
 #include "dsda/hud.h"
@@ -46,15 +48,25 @@ int dsda_track_100k;
 
 int dsda_last_leveltime;
 int dsda_last_gamemap;
+int dsda_startmap;
+int dsda_movie_target;
+dboolean dsda_any_map_completed;
 
 // other
-static char* dsda_demo_name_base;
 int dsda_max_kill_requirement;
 int dsda_session_attempts = 1;
 
 dboolean dsda_IsWeapon(mobj_t* thing);
 void dsda_DisplayNotification(const char* msg);
 void dsda_ResetMapVariables(void);
+
+dboolean dsda_ILComplete(void) {
+  return dsda_any_map_completed && dsda_last_gamemap == dsda_startmap && !dsda_movie_target;
+}
+
+dboolean dsda_MovieComplete(void) {
+  return dsda_any_map_completed && dsda_last_gamemap == dsda_movie_target && dsda_movie_target;
+}
 
 void dsda_ReadCommandLine(void) {
   int p;
@@ -66,6 +78,9 @@ void dsda_ReadCommandLine(void) {
   dsda_time_use = M_CheckParm("-time_use");
   dsda_time_secrets = M_CheckParm("-time_secrets");
   dsda_time_all = M_CheckParm("-time_all");
+
+  if ((p = M_CheckParm("-movie")) && ++p < myargc)
+    dsda_movie_target = atoi(myargv[p]);
 
   if (dsda_time_all) {
     dsda_time_keys = true;
@@ -102,6 +117,20 @@ void dsda_DisplayNotifications(void) {
     dsda_100k_note_shown = true;
     dsda_DisplayNotification("100K achieved!");
   }
+}
+
+void dsda_DecomposeILTime(dsda_level_time_t* level_time) {
+  level_time->m = dsda_last_leveltime / 35 / 60;
+  level_time->s = (dsda_last_leveltime % (60 * 35)) / 35;
+  level_time->t = round(100.f * (dsda_last_leveltime % 35) / 35);
+}
+
+void dsda_DecomposeMovieTime(dsda_movie_time_t* total_time) {
+  extern int totalleveltimes;
+
+  total_time->h = totalleveltimes / 35 / 60 / 60;
+  total_time->m = (totalleveltimes % (60 * 60 * 35)) / 35 / 60;
+  total_time->s = (totalleveltimes % (60 * 35)) / 35;
 }
 
 void dsda_DisplayNotification(const char* msg) {
@@ -343,6 +372,7 @@ void dsda_WatchLevelCompletion(void) {
 
   dsda_last_leveltime = leveltime;
   dsda_last_gamemap = gamemap;
+  dsda_any_map_completed = true;
 
   dsda_RecordSplit();
 }
@@ -372,29 +402,6 @@ void dsda_WatchSecret(void) {
   if (dsda_time_secrets) dsda_AddSplit(DSDA_SPLIT_SECRET);
 }
 
-char* dsda_DemoNameBase(void) {
-  return dsda_demo_name_base;
-}
-
-// from crispy - incrementing demo file names
-char* dsda_NewDemoName(void) {
-  char* demo_name;
-  size_t demo_name_size;
-  FILE* fp = NULL;
-  static unsigned int j = 2;
-
-  demo_name_size = strlen(dsda_demo_name_base) + 11; // 11 = -12345.lmp\0
-  demo_name = malloc(demo_name_size);
-  snprintf(demo_name, demo_name_size, "%s.lmp", dsda_demo_name_base);
-
-  for (; j <= 99999 && (fp = fopen(demo_name, "rb")) != NULL; j++) {
-    snprintf(demo_name, demo_name_size, "%s-%05d.lmp", dsda_demo_name_base, j);
-    fclose (fp);
-  }
-
-  return demo_name;
-}
-
 static void dsda_ResetTracking(void) {
   dsda_ResetAnalysis();
 
@@ -402,8 +409,6 @@ static void dsda_ResetTracking(void) {
 }
 
 void dsda_WatchDeferredInitNew(skill_t skill, int episode, int map) {
-  char* demo_name;
-
   if (!demorecording) return;
 
   ++dsda_session_attempts;
@@ -414,13 +419,13 @@ void dsda_WatchDeferredInitNew(skill_t skill, int episode, int map) {
   dsda_ResetRevealMap();
   G_CheckDemoStatus();
 
-  demo_name = dsda_NewDemoName();
+  dsda_last_gamemap = 0;
+  dsda_last_leveltime = 0;
+  dsda_any_map_completed = false;
 
-  G_RecordDemo(demo_name);
+  dsda_InitDemoRecording();
 
   basetic = gametic;
-
-  free(demo_name);
 }
 
 void dsda_WatchNewGame(void) {
@@ -434,23 +439,4 @@ void dsda_WatchLevelReload(int* reloaded) {
 
   G_DeferedInitNew(gameskill, gameepisode, startmap);
   *reloaded = 1;
-}
-
-void dsda_WatchRecordDemo(const char* name) {
-  size_t base_size;
-
-  if (dsda_demo_name_base != NULL) {
-    dsda_InitSettings();
-    return;
-  }
-
-  base_size = strlen(name) - 3;
-  dsda_demo_name_base = malloc(base_size);
-  strncpy(dsda_demo_name_base, name, base_size);
-  dsda_demo_name_base[base_size - 1] = '\0';
-
-  // demorecording is set after prboom+ has already cached its settings
-  // we need to reset things here to satisfy strict mode
-  dsda_InitSettings();
-  dsda_InitKeyFrame();
 }
