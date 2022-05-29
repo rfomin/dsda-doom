@@ -1821,10 +1821,10 @@ dboolean M_StringConcat(char *dest, const char *src, size_t dest_size)
 int M_StrToInt(const char *s, int *l)
 {
   return (
-    (sscanf(s, " 0x%x", l) == 1) ||
-    (sscanf(s, " 0X%x", l) == 1) ||
-    (sscanf(s, " 0%o", l) == 1) ||
-    (sscanf(s, " %d", l) == 1)
+    (sscanf(s, " 0x%x", (unsigned int *) l) == 1) ||
+    (sscanf(s, " 0X%x", (unsigned int *) l) == 1) ||
+    (sscanf(s, " 0%o", (unsigned int *) l) == 1) ||
+    (sscanf(s, " %u", (unsigned int *) l) == 1)
   );
 }
 
