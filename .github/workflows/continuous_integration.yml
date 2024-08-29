@@ -16,15 +16,15 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {
-              name: "MSVC x64",
-              os: windows-latest,
-              build_type: "Release",
-              extra_options: "-A x64",
-              package_name: "vs_x64",
-              vcpkg_triplet: x64-windows,
-              shell: bash,
-            }
+          # - {
+          #     name: "MSVC x64",
+          #     os: windows-latest,
+          #     build_type: "Release",
+          #     extra_options: "-A x64",
+          #     package_name: "vs_x64",
+          #     vcpkg_triplet: x64-windows,
+          #     shell: bash,
+          #   }
           - {
               name: "MSYS2 UCRT64",
               os: windows-latest,
@@ -151,3 +151,25 @@ jobs:
 
       - name: Build
         run: cmake --build build --config ${{ matrix.config.build_type }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd build
+          cpack
+
+      - name: Upload Artifacts
+        if: ${{ matrix.name == 'MSYS2 UCRT64' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.config.package_name }}
+          path: build/*.zip
+
+      - name: Release
+        if: ${{ contains(github.ref, 'tags') && matrix.name == 'MSYS2 UCRT64' }}
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ github.ref_name }}
+          bodyFile: CHANGELOG.md
+          allowUpdates: true
+          artifacts: build/*.zip
