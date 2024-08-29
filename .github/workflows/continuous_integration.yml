@@ -156,7 +156,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           cd build
-          cpack
+          cpack -G ZIP
 
       - name: Upload Artifacts
         if: ${{ matrix.name == 'MSYS2 UCRT64' }}
