@@ -16,15 +16,6 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          # - {
-          #     name: "MSVC x64",
-          #     os: windows-latest,
-          #     build_type: "Release",
-          #     extra_options: "-A x64",
-          #     package_name: "vs_x64",
-          #     vcpkg_triplet: x64-windows,
-          #     shell: bash,
-          #   }
           - {
               name: "MSYS2 UCRT64",
               os: windows-latest,
@@ -170,6 +161,5 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
-          bodyFile: CHANGELOG.md
           allowUpdates: true
           artifacts: build/*.zip
